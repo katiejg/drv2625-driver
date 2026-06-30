@@ -1,0 +1,7 @@
+&i2c0 {
+	drv2625: drv2625@5a {
+		compatible = "i2c-device";
+		reg = < 0x5a >;
+		label = "DRV2625";
+	};
+};
