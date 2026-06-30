@@ -1,7 +1,30 @@
 &i2c0 {
+	status = "okay";
+	pinctrl-0 = <&i2c0_default>;
+	pinctrl-1 = <&i2c0_sleep>;
+	pinctrl-names = "default", "sleep";
 	drv2625: drv2625@5a {
 		compatible = "i2c-device";
+		status = "okay";
 		reg = < 0x5a >;
 		label = "DRV2625";
 	};
 };
+
+&pinctrl {
+	/omit-if-no-ref/ i2c0_default: i2c0_default {
+		group1 {
+			psels = <NRF_PSEL(TWIM_SCL, 1, 14)>,
+				<NRF_PSEL(TWIM_SDA, 1, 15)>;
+		};
+	};
+	/omit-if-no-ref/ i2c0_sleep: i2c0_sleep {
+		group1 {
+			psels = <NRF_PSEl(TWIM_SCL, 1, 14)>,
+				<NRF_PSEL(TWIM_SDA, 1, 15)>;
+			low-power-enable;
+		};
+	};
+};
+
+
