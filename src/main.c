@@ -3,11 +3,13 @@
 #include "drv2625.h"
 
 int main(void) {
-        // Part No. VG0825001U
+        /* Create motor struct */
+        // My Motor = VG0825001U
         struct motor myMotor;
         myMotor.ratedVoltage = 52;
         myMotor.odClamp = 41;
         myMotor.driveTime = 16; // LRA Drive Time = 2.1ms
+        myMotor.olLRAPeriod = 169;
         myMotor.isLRA = true;
         return 0;
 }

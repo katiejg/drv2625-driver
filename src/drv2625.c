@@ -101,7 +101,68 @@ static void autocalibrate(struct motor* myMotor) {
       // STEP 5: Evaluate system performance
 }
 
-void configuration(struct motor* myMotor) {
+static void closed_loop_config() {
+      // Clear CONTROL_LOOP bit
+      uint8_t buf = read_transfer(CONTROL_LOOP_REG) & ~(CONTROL_LOOP_MASK);
+      write_transfer(CONTROL_LOOP_REG, buf);
+      // Set to enable auto-braking
+      buf = read_transfer(AUTO_BRK_INTO_STBY_REG) | AUTO_BRK_INTO_STBY_MASK;
+      write_transfer(AUTO_BRK_INTO_STBY_REG, buf);
+}
+
+static void open_loop_config(uint16_t olLRAPeriod) {
+      // Set CONTROL_LOOP bit
+      uint8_t buf = read_transfer(CONTROL_LOOP_REG) | CONTROL_LOOP_MASK;
+      write_transfer(CONTROL_LOOP_REG, buf);
+      // Set to enable auto-braking
+      buf = read_transfer(AUTO_BRK_INTO_STBY_REG) | AUTO_BRK_INTO_STBY_MASK;
+      write_transfer(AUTO_BRK_INTO_STBY_REG, buf);
+      // Set to enable OL auto-braking
+      buf = read_transfer(AUTO_BRK_OL_REG) | AUTO_BRK_OL_MASK;
+      write_transfer(AUTO_BRK_OL_REG, buf);
+      // Establish driving frequency for LRA in open loop
+      buf = uint8_t(olLRAPeriod & ~(0xff00))
+      write_transfer(OL_LRA_PERIOD_REG_LOWER, buf);
+      buf = uint8_t((olLRAPeriod & ~(0xff)) >> 8);
+      buf += read_transfer(OL_LRA_PERIOD_REG_UPPER) & ~(OL_LRA_PERIOD_MASK_UPPER);
+      write_transfer(OL_LRA_PERIOD_REG_UPPER, buf);
+}
+
+// TODO
+static void rtp_mode() {
+      // Select RTP mode operation
+      uint8_t buf = read_transfer(MODE_REG) & ~(MODE_MASK);
+      write_transfer(MODE_REG, buf);
+      // TODO Write desired drive amplitude (signed)
+      // TODO Trigger the waveform...
+}
+
+// TODO
+static void waveform_sequencer() {
+      //
+}
+
+/**
+ * @brief 
+ * 
+ * @param myMotor
+ * @param open_loop Set to true if you want to configure for open-loop mode
+ */
+void configuration(struct motor* myMotor, enum Loop loop_type) {
       power_on();
       autocalibrate(myMotor);
+
+      // Closed or open loop?
+      if (loop_type == OPEN_LOOP) {
+            open_loop_config(myMotor->olLRAPeriod);
+      } else {
+            closed_loop_config();
+      }
+
+      // Playback mode?
+      if (mode == WAVEFORM_SEQUENCER) {
+            
+      } else {
+            rtp_mode();
+      }
 }
