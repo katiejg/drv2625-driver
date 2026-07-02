@@ -7,7 +7,7 @@
 /* PINS */
 #define I2C_NODE DT_NODELABEL(drv2625)
 #define NRST_PORT "GPIO_1"
-#define NRST_PIN 15
+#define NRST_PIN 13
 
 /* REGISTERS */
 #define DIAG_RESULT_REG 0x01
