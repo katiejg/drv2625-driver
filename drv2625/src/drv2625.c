@@ -41,8 +41,8 @@ static uint8_t read_transfer(uint8_t reg_addr) {
 }
 
 static void nrst_setup() {
-      int dev = device_get_binding(NRST_PORT);
-      gpio_pin_configure(dev, NRST_PIN, (GPIO_OUTPUT | GPIO_PULL_UP));
+      const struct device* dev = device_get_binding(NRST_PORT);
+      gpio_pin_configure(dev, NRST_PIN, GPIO_OUTPUT);
 }
 
 static void power_on() {
