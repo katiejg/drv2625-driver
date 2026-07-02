@@ -4,7 +4,7 @@
  * @brief DRV2625EVM-MINI Driver for nRF5340dk
  * @version 0.1
  * @date 2026-06-30
- * @note Trigger control is currently done with GO bit.
+ * @note Trigger control is currently done with Software Trigger (GO bit).
  */
 
 #include "drv2625.h"
@@ -33,15 +33,15 @@ static void write_transfer(uint8_t reg_addr, uint8_t data) {
 static uint8_t read_transfer(uint8_t reg_addr) {
       // SINGLE-BYTE READ
       uint8_t data;
-      int ret = i2c_write_read_dt(&dev_i2c, &reg_addr, 1, &data, 1);
+      int ret = i2c_write_read_dt(&drv_i2c, &reg_addr, 1, &data, 1);
       if (ret != 0){
-            printk("Failed to write/read I2C device address %x at reg. %x \n\r", dev_i2c.addr, reg_addr);
+            printk("Failed to write/read I2C device address %x at reg. %x \n\r", drv_i2c.addr, reg_addr);
       }
       return data;
 }
 
 static void nrst_setup() {
-      dev = device_get_binding(NRST_PORT);
+      int dev = device_get_binding(NRST_PORT);
       gpio_pin_configure(dev, NRST_PIN, GPIO_OUTPUT);
 }
 
@@ -126,9 +126,9 @@ static void open_loop_config(uint16_t olLRAPeriod) {
       buf = read_transfer(AUTO_BRK_OL_REG) | AUTO_BRK_OL_MASK;
       write_transfer(AUTO_BRK_OL_REG, buf);
       // Establish driving frequency for LRA in open loop
-      buf = uint8_t(olLRAPeriod & ~(0xff00))
+      buf = (uint8_t)(olLRAPeriod & ~(0xff00));
       write_transfer(OL_LRA_PERIOD_REG_LOWER, buf);
-      buf = uint8_t((olLRAPeriod & ~(0xff)) >> 8);
+      buf = (uint8_t)((olLRAPeriod & ~(0xff)) >> 8);
       buf += read_transfer(OL_LRA_PERIOD_REG_UPPER) & ~(OL_LRA_PERIOD_MASK_UPPER);
       write_transfer(OL_LRA_PERIOD_REG_UPPER, buf);
 }
@@ -136,10 +136,11 @@ static void open_loop_config(uint16_t olLRAPeriod) {
 // TODO
 static void rtp_mode() {
       // Select RTP mode operation (Clear MODE)
-      uint8_t buf = read_transfer(MODE_REG) & ~(MODE_MASK);
-      write_transfer(MODE_REG, buf);
+      // uint8_t buf = read_transfer(MODE_REG) & ~(MODE_MASK);
+      // write_transfer(MODE_REG, buf);
       // TODO Write desired drive amplitude (signed)
       // TODO Trigger the waveform...
+      return;
 }
 
 /**
@@ -148,7 +149,7 @@ static void rtp_mode() {
  * @param effect_id See 9.1.1 Waveform Library Effects List
  * @param main_loop_count See Table 8-27
  */
-static void waveform_sequencer(uint8_t effect_id, uint8_t main_loop_count) {
+void waveform_sequencer(uint8_t effect_id, uint8_t main_loop_count) {
       // Make sure params are valid:
       if (effect_id > 123 || effect_id < 1) {
             return;
@@ -187,7 +188,7 @@ static void waveform_sequencer(uint8_t effect_id, uint8_t main_loop_count) {
  * @param myMotor
  * @param open_loop Set to true if you want to configure for open-loop mode
  */
-void drv2625_init(struct motor* myMotor, enum Loop loop_type, enum PlaybackMode mode) {
+void drv2625_init(struct motor* myMotor, enum Loop loop_type) {
       power_on();
       autocalibrate(myMotor);
 
@@ -204,10 +205,11 @@ void drv2625_init(struct motor* myMotor, enum Loop loop_type, enum PlaybackMode 
             closed_loop_config();
       }
 
-      // Playback mode?
-      if (mode == WAVEFORM_SEQUENCER) {
-            waveform_sequencer();
-      } else {
-            rtp_mode();
-      }
+      // // Playback mode?
+      // if (mode == WAVEFORM_SEQUENCER) {
+      //       waveform_sequencer(waveform_id);
+      // } 
+      // // else {
+      // //       rtp_mode();
+      // // }
 }

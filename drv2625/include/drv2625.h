@@ -58,21 +58,22 @@ enum Loop {
       OPEN_LOOP
 };
 
-enum PlaybackMode {
-      RTP,
-      WAVEFORM_SEQUENCER
-};
+// enum PlaybackMode {
+//       RTP,
+//       WAVEFORM_SEQUENCER
+// };
 
 /* MOTOR STRUCT */
 struct motor {
         // OL_LRA_PERIOD[9:0] is the nine least significant bits of olLRAPeriod.
-        uint16_t olLRAPeriod = 198;
+        uint16_t olLRAPeriod; // default=198
         uint8_t ratedVoltage; // Calculated with Eq. 6/7 in DRV2625 datasheet
         uint8_t odClamp; // Calculated with Eq. 8/9 in DRV2625 datasheet
         // DRIVE_TIME[4:0] is the five least significant bits of driveTime.
-        uint8_t driveTime = 0x10; // See 7.6.1.1 and Table 8-40 in the datasheet
+        uint8_t driveTime; // (default=0x10) See 7.6.1.1 and Table 8-40 in the datasheet
         bool isLRA;
 };
 
 /* PUBLIC FUNCTIONS */
 void drv2625_init(struct motor* myMotor, enum Loop loop_type);
+void waveform_sequencer(uint8_t effect_id, uint8_t main_loop_count);
