@@ -17,7 +17,20 @@
 #define CONTROL_LOOP_REG 0x08
 #define LRA_ERM_REG 0x08
 #define GO_REG 0x0c
+#define LIB_SEL_REG 0x0d
 #define RTP_INPUT_REG 0x0e
+
+// WAV_FROM_SEQ Regs
+#define WAV_FRM_SEQ1_REG 0x0f
+#define WAV_FRM_SEQ2_REG 0x10
+#define WAV_FRM_SEQ3_REG 0x11
+#define WAV_FRM_SEQ4_REG 0x12
+#define WAV_FRM_SEQ5_REG 0x13
+#define WAV_FRM_SEQ6_REG 0x14
+#define WAV_FRM_SEQ7_REG 0x15
+#define WAV_FRM_SEQ8_REG 0x16
+
+#define WAV_SEQ_MAIN_LOOP_REG 0x19
 #define RATED_VOLTAGE_REG 0x1f
 #define OD_CLAMP_REG 0x20
 #define DRIVE_TIME_REG 0x27
@@ -32,6 +45,10 @@
 #define CONTROL_LOOP_MASK 0x40
 #define LRA_ERM_MASK 0x80
 #define GO_MASK 0x01
+#define LIB_SEL_MASK 0x40
+#define WAITn_MASK 0x80
+#define WAV_FRM_SEQn_MASK 0x7f
+#define WAV_SEQ_MAIN_LOOP_MASK 0x07
 #define DRIVE_TIME_MASK 0x1f
 #define OL_LRA_PERIOD_MASK_UPPER 0x03
 
@@ -58,4 +75,4 @@ struct motor {
 };
 
 /* PUBLIC FUNCTIONS */
-int configuration(struct motor* myMotor);
+void drv2625_init(struct motor* myMotor, enum Loop loop_type);

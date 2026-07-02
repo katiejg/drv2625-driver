@@ -4,6 +4,7 @@
  * @brief DRV2625EVM-MINI Driver for nRF5340dk
  * @version 0.1
  * @date 2026-06-30
+ * @note Trigger control is currently done with GO bit.
  */
 
 #include "drv2625.h"
@@ -56,6 +57,13 @@ static void power_on() {
       write_transfer(MODE_REG, buf);
 }
 
+static void go_trigger() {
+      // Set GO bit
+      uint8_t buf = read_transfer(GO_REG) | GO_MASK;
+      write_transfer(GO_REG, buf);
+      // GO automatically clears when process is complete
+}
+
 /**
  * @brief Auto-Calibration Routine
  * @note Uses default values for the following calibration engine inputs: 
@@ -86,10 +94,7 @@ static void autocalibrate(struct motor* myMotor) {
       write_transfer(DRIVE_TIME_REG, buf);
 
       // STEP 3: Start auto-calibration process
-      // Set GO bit
-      buf = read_transfer(GO_REG) | GO_MASK;
-      write_transfer(GO_REG, buf);
-      // GO automatically clears when auto-calibration is complete
+      go_trigger();
 
       // STEP 4: Check DIAG_RESULT for success
       uint8_t diagnostic = read_transfer(DIAG_RESULT_REG) & DIAG_RESULT_MASK;
@@ -130,16 +135,50 @@ static void open_loop_config(uint16_t olLRAPeriod) {
 
 // TODO
 static void rtp_mode() {
-      // Select RTP mode operation
+      // Select RTP mode operation (Clear MODE)
       uint8_t buf = read_transfer(MODE_REG) & ~(MODE_MASK);
       write_transfer(MODE_REG, buf);
       // TODO Write desired drive amplitude (signed)
       // TODO Trigger the waveform...
 }
 
-// TODO
-static void waveform_sequencer() {
-      //
+/**
+ * @brief Assumes using an effect from the library
+ * 
+ * @param effect_id See 9.1.1 Waveform Library Effects List
+ * @param main_loop_count See Table 8-27
+ */
+static void waveform_sequencer(uint8_t effect_id, uint8_t main_loop_count) {
+      // Make sure params are valid:
+      if (effect_id > 123 || effect_id < 1) {
+            return;
+      }
+      if (main_loop_count > 7) {
+            return;
+      }
+
+      // STEP 1: Set MODE to 1 to select Waveform Sequencer
+      uint8_t buf = (read_transfer(MODE_REG) & ~(MODE_MASK)) + 0x01;
+      write_transfer(MODE_REG, buf);
+
+      // STEP 3: Clear WAIT to indicate SEQ holds a wavefrom identifier
+      buf = read_transfer(WAV_FRM_SEQ1_REG) & ~(WAITn_MASK);
+      write_transfer(WAV_FRM_SEQ1_REG, buf);
+      // Populate with ID
+      buf = (read_transfer(WAV_FRM_SEQ1_REG) & ~(WAV_FRM_SEQn_MASK)) + effect_id;
+      write_transfer(WAV_FRM_SEQ1_REG, buf);
+      // Terminate SEQ
+      buf = read_transfer(WAV_FRM_SEQ2_REG) & ~(WAV_FRM_SEQn_MASK);
+      write_transfer(WAV_FRM_SEQ2_REG, buf);
+
+      // TODO STEP 4: Allow loop control of each sequence. For now, leave WAVn_SEQ_LOOP as default.
+
+      // STEP 5: Set main loop control
+      buf = read_transfer(WAV_SEQ_MAIN_LOOP_REG) & ~(WAV_SEQ_MAIN_LOOP_MASK) + main_loop_count;
+      write_transfer(WAV_SEQ_MAIN_LOOP_REG, buf);
+
+      // STEP 6: Trigger waveform with GO bit
+      go_trigger();
 }
 
 /**
@@ -148,20 +187,26 @@ static void waveform_sequencer() {
  * @param myMotor
  * @param open_loop Set to true if you want to configure for open-loop mode
  */
-void configuration(struct motor* myMotor, enum Loop loop_type) {
+void drv2625_init(struct motor* myMotor, enum Loop loop_type, enum PlaybackMode mode) {
       power_on();
       autocalibrate(myMotor);
 
       // Closed or open loop?
       if (loop_type == OPEN_LOOP) {
+            // if using ROM library B (ERM Open-Loop)
+            uint8_t buf = read_transfer(LIB_SEL_REG) | LIB_SEL_MASK;
+            write_transfer(LIB_SEL_REG, buf);
             open_loop_config(myMotor->olLRAPeriod);
       } else {
+            // if using ROM library A (LRA Closed-Loop)
+            uint8_t buf = read_transfer(LIB_SEL_REG) & ~(LIB_SEL_MASK);
+            write_transfer(LIB_SEL_REG, buf);
             closed_loop_config();
       }
 
       // Playback mode?
       if (mode == WAVEFORM_SEQUENCER) {
-            
+            waveform_sequencer();
       } else {
             rtp_mode();
       }
