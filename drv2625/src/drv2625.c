@@ -26,7 +26,7 @@ static void write_transfer(uint8_t reg_addr, uint8_t data) {
       uint8_t buf[2] = {reg_addr, data};
       int ret = i2c_write_dt(&drv_i2c, buf, sizeof(buf));
       if (ret != 0) {
-            printk("Failed to write to I2C device address %x at reg. %x \n\r", drv_i2c.addr, buf[0]);
+            printk("%d: Failed to write to I2C device address %x at reg. %x \n\r", ret, drv_i2c.addr, buf[0]);
       }
 }
 
@@ -35,14 +35,19 @@ static uint8_t read_transfer(uint8_t reg_addr) {
       uint8_t data;
       int ret = i2c_write_read_dt(&drv_i2c, &reg_addr, 1, &data, 1);
       if (ret != 0){
-            printk("Failed to write/read I2C device address %x at reg. %x \n\r", drv_i2c.addr, reg_addr);
+            printk("%d: Failed to write/read I2C device address %x at reg. %x \n\r", ret, drv_i2c.addr, reg_addr);
       }
       return data;
 }
 
+static const struct gpio_dt_spec nrst_spec = GPIO_DT_SPEC_GET(I2C_NODE, nrst_gpios);
+
 static void nrst_setup() {
-      const struct device* dev = device_get_binding(NRST_PORT);
-      gpio_pin_configure(dev, NRST_PIN, GPIO_OUTPUT);
+      if (!gpio_is_ready_dt(&nrst_spec)) {
+            printk("NRST GPIO not ready!\n\r");
+            return;
+      }
+      gpio_pin_configure_dt(&nrst_spec, GPIO_OUTPUT_INACTIVE);
 }
 
 static void power_on() {
@@ -50,8 +55,9 @@ static void power_on() {
       // Call nrst_setup() before calling power_on()
       nrst_setup();
       // Assert NRST (logic high)
-      gpio_pin_set(NRST_PORT, NRST_PIN, 1);
+      gpio_pin_set_dt(&nrst_spec, 1);
       // Remove device from standby:
+      k_msleep(1);   // give device time to wake up
       // Write MODE[1:0] to 0x00
       uint8_t buf = read_transfer(MODE_REG) & ~(MODE_MASK); // Clear MODE
       write_transfer(MODE_REG, buf);
@@ -175,7 +181,7 @@ void waveform_sequencer(uint8_t effect_id, uint8_t main_loop_count) {
       // TODO STEP 4: Allow loop control of each sequence. For now, leave WAVn_SEQ_LOOP as default.
 
       // STEP 5: Set main loop control
-      buf = read_transfer(WAV_SEQ_MAIN_LOOP_REG) & ~(WAV_SEQ_MAIN_LOOP_MASK) + main_loop_count;
+      buf = (read_transfer(WAV_SEQ_MAIN_LOOP_REG) & ~(WAV_SEQ_MAIN_LOOP_MASK)) + main_loop_count;
       write_transfer(WAV_SEQ_MAIN_LOOP_REG, buf);
 
       // STEP 6: Trigger waveform with GO bit

@@ -1,0 +1,11 @@
+description: TI DRV2625 haptic driver
+
+compatible: "ti,drv2625"
+
+include: [i2c-device.yaml]
+
+properties:
+  nrst-gpios:
+    type: phandle-array
+    required: true
+    description: GPIO connected to the DRV2625 NRST pin
