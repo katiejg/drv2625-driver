@@ -30,14 +30,15 @@ static void write_transfer(uint8_t reg_addr, uint8_t data) {
       }
 }
 
+uint8_t data[2];
 static uint8_t read_transfer(uint8_t reg_addr) {
       // SINGLE-BYTE READ
-      uint8_t data;
-      int ret = i2c_write_read_dt(&drv_i2c, &reg_addr, 1, &data, 1);
+      uint8_t regs[] = {reg_addr};
+      int ret = i2c_write_read_dt(&drv_i2c, regs, 1, data, 1);
       if (ret != 0){
             printk("%d: Failed to write/read I2C device address %x at reg. %x \n\r", ret, drv_i2c.addr, reg_addr);
       }
-      return data;
+      return data[0];
 }
 
 static const struct gpio_dt_spec nrst_spec = GPIO_DT_SPEC_GET(I2C_NODE, nrst_gpios);
