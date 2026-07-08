@@ -3,10 +3,10 @@
     pinctrl-0 = <&i2c1_default>;
 	pinctrl-1 = <&i2c1_sleep>;
     pinctrl-names = "default", "sleep";
-    drv2625: drv2625@5a{
+    drv2625: drv2625@18{
         compatible = "ti,drv2625";
         status = "okay";
-        reg = < 0x5a >;
+        reg = < 0x18 >;
 	nrst-gpios = <&gpio1 13 GPIO_ACTIVE_HIGH>;
     };
 };
