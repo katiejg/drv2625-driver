@@ -55,9 +55,11 @@ static void power_on() {
       // Call nrst_setup() before calling power_on()
       nrst_setup();
       // Assert NRST (logic high)
+      gpio_pin_set_dt(&nrst_spec, 0);
+      k_msleep(5);
       gpio_pin_set_dt(&nrst_spec, 1);
+      k_msleep(5);
       // Remove device from standby:
-      k_msleep(1);   // give device time to wake up
       // Write MODE[1:0] to 0x00
       uint8_t buf = read_transfer(MODE_REG) & ~(MODE_MASK); // Clear MODE
       write_transfer(MODE_REG, buf);
@@ -102,6 +104,10 @@ static void autocalibrate(struct motor* myMotor) {
       // STEP 3: Start auto-calibration process
       go_trigger();
 
+      while (read_transfer(GO_REG) & GO_MASK) {
+            k_msleep(1);
+      }
+
       // STEP 4: Check DIAG_RESULT for success
       uint8_t diagnostic = read_transfer(DIAG_RESULT_REG) & DIAG_RESULT_MASK;
       if (diagnostic) {
@@ -140,14 +146,14 @@ static void open_loop_config(uint16_t olLRAPeriod) {
 }
 
 // TODO
-static void rtp_mode() {
-      // Select RTP mode operation (Clear MODE)
-      // uint8_t buf = read_transfer(MODE_REG) & ~(MODE_MASK);
-      // write_transfer(MODE_REG, buf);
-      // TODO Write desired drive amplitude (signed)
-      // TODO Trigger the waveform...
-      return;
-}
+// static void rtp_mode() {
+//       // Select RTP mode operation (Clear MODE)
+//       // uint8_t buf = read_transfer(MODE_REG) & ~(MODE_MASK);
+//       // write_transfer(MODE_REG, buf);
+//       // TODO Write desired drive amplitude (signed)
+//       // TODO Trigger the waveform...
+//       return;
+// }
 
 /**
  * @brief Assumes using an effect from the library
@@ -210,12 +216,4 @@ void drv2625_init(struct motor* myMotor, enum Loop loop_type) {
             write_transfer(LIB_SEL_REG, buf);
             closed_loop_config();
       }
-
-      // // Playback mode?
-      // if (mode == WAVEFORM_SEQUENCER) {
-      //       waveform_sequencer(waveform_id);
-      // } 
-      // // else {
-      // //       rtp_mode();
-      // // }
 }
