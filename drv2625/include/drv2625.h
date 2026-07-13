@@ -8,6 +8,7 @@
 #define I2C_NODE DT_NODELABEL(drv2625)
 
 /* REGISTERS */
+#define CHIPID_REG 0x00
 #define DIAG_RESULT_REG 0x01
 #define MODE_REG 0x07
 #define AUTO_BRK_OL_REG 0x08
@@ -36,6 +37,7 @@
 #define OL_LRA_PERIOD_REG_LOWER 0x2f
 
 /* REGISTER MASKS */
+#define CHIPID_MASK 0xf0
 #define DIAG_RESULT_MASK 0x80
 #define MODE_MASK 0x03
 #define AUTO_BRK_OL_MASK 0x10
@@ -51,15 +53,6 @@
 #define OL_LRA_PERIOD_MASK_UPPER 0x03
 
 /* CONFIG ENUMS */
-enum Loop {
-      CLOSED_LOOP,
-      OPEN_LOOP
-};
-
-// enum PlaybackMode {
-//       RTP,
-//       WAVEFORM_SEQUENCER
-// };
 
 /* MOTOR STRUCT */
 struct motor {
@@ -73,5 +66,4 @@ struct motor {
 };
 
 /* PUBLIC FUNCTIONS */
-void drv2625_init(struct motor* myMotor, enum Loop loop_type);
-void waveform_sequencer(uint8_t effect_id, uint8_t main_loop_count);
+void drv2625_init(struct motor* myMotor);

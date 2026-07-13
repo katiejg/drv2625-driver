@@ -12,8 +12,7 @@ int main(void) {
         myMotor.olLRAPeriod = 169;
         myMotor.isLRA = true;
 
-        drv2625_init(&myMotor, CLOSED_LOOP);
-        waveform_sequencer(1, 2);
+        drv2625_init(&myMotor);
         
         return 0;
 }
