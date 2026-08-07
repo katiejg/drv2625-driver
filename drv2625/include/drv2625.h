@@ -1,6 +1,6 @@
 /* INCLUDE */
 #include <stdint.h>
-#include <stdbool.h>
+#include <zephyr/devicetree.h>
 #include <zephyr/drivers/i2c.h>
 #include <zephyr/drivers/gpio.h>
 
@@ -67,3 +67,5 @@ struct motor {
 
 /* PUBLIC FUNCTIONS */
 void drv2625_init(struct motor* myMotor);
+void switch_init();
+void switch_set(uint8_t level);
