@@ -41,24 +41,25 @@ static uint8_t read_transfer(uint8_t reg_addr) {
       return data[0];
 }
 
-static const struct gpio_dt_spec nrst_spec = GPIO_DT_SPEC_GET(I2C_NODE, nrst_gpios);
+static const struct gpio_dt_spec drv_vdd_spec = GPIO_DT_SPEC_GET(I2C_NODE, drv-gpios);
 
-static void nrst_setup() {
-      if (!gpio_is_ready_dt(&nrst_spec)) {
-            printk("NRST GPIO not ready!\n\r");
+// This GPIO provides power to the DRV
+static void gpio_setup() {
+      if (!gpio_is_ready_dt(&drv_vdd_spec)) {
+            printk("GPIO not ready!\n\r");
             return;
       }
-      gpio_pin_configure_dt(&nrst_spec, GPIO_OUTPUT_INACTIVE);
+      gpio_pin_configure_dt(&drv_vdd_spec, GPIO_OUTPUT_INACTIVE);
 }
 
 static void power_on() {
       while (!is_ready()); // wait until ready
-      // Call nrst_setup() before calling power_on()
-      nrst_setup();
-      // Assert NRST (logic high)
-      gpio_pin_set_dt(&nrst_spec, 0);
+      // Turn on the haptics driver
+      gpio_setup();
+      // Set GPIO as active high to enable ON
+      gpio_pin_set_dt(&drv_vdd_spec, 0);
       k_msleep(5);
-      gpio_pin_set_dt(&nrst_spec, 1);
+      gpio_pin_set_dt(&drv_vdd_spec, 1);
       k_msleep(5);
       // Remove device from standby:
       // Write MODE[1:0] to 0x00

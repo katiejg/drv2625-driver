@@ -4,6 +4,9 @@
 #include <zephyr/drivers/i2c.h>
 #include <zephyr/drivers/gpio.h>
 
+// GPIOS (P0.30) is connected to ON in the transistor
+// VOUT on the transistor is connected to DRV_VDD 
+
 /* PINS */
 #define I2C_NODE DT_NODELABEL(drv2625)
 
