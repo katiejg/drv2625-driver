@@ -32,6 +32,6 @@
 / {
 	drv_switch: drv_switch {
 		compatible = "drv-switch";
-		gpios = <&gpio0 30 GPIO_ACTIVE_LOW>;
+		gpios = <&gpio0 30 GPIO_ACTIVE_HIGH>;
 	};
 };

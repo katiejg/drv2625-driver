@@ -30,7 +30,7 @@ static void write_transfer(uint8_t reg_addr, uint8_t data) {
 }
 
 uint8_t data[2];
-static uint8_t read_transfer(uint8_t reg_addr, int num_read) {
+static uint8_t * read_transfer(uint8_t reg_addr, int num_read) {
       // SINGLE-BYTE READ
       uint8_t regs[] = {reg_addr};
       int ret = i2c_write_read_dt(&dev_i2c, regs, 1, &data, num_read);
@@ -43,23 +43,27 @@ static uint8_t read_transfer(uint8_t reg_addr, int num_read) {
 /* SWITCH SETUP */
 static const struct gpio_dt_spec drv_switch = GPIO_DT_SPEC_GET_OR(DT_NODELABEL(drv_switch), gpios, {0});
 
-void switch_init() {
+static void switch_init() {
       if (!gpio_is_ready_dt(&drv_switch)) {
             printk("The switch pin GPIO port is not ready!\n\r");
             return;
       }
-      uint8_t err = gpio_pin_configure_dt(&drv_switch, GPIO_OUTPUT_INACTIVE);
+      uint8_t err = gpio_pin_configure_dt(&drv_switch, GPIO_OUTPUT_ACTIVE);
       if (err != 0) {
-            printk("Configuring GPIO pin to inactive output failed.");
+            printk("Configuring GPIO pin to output failed.\n");
+            return;
       }
+      printk("Configured GPIO pin to output\n");
 }
 
 // level should be either 0 (LOW/OFF) or 1 (HIGH/ON)
-void switch_set(uint8_t level) {
+void switch_set(int level) {
       uint8_t err = gpio_pin_set_dt(&drv_switch, level);
       if (err != 0) {
-            printk("Setting GPIO pin level failed.");
+            printk("Setting GPIO pin level failed\n");
+            return;
       }
+      printk("Setting GPIO pin level (%i)", level);
 }
 
 /**
@@ -69,6 +73,12 @@ void switch_set(uint8_t level) {
  * @param open_loop Set to true if you want to configure for open-loop mode
  */
 void drv2625_init(struct motor* myMotor) {
+      // Turn on GPIOs
+      switch_init();
+      switch_set(1);
+      // Required delay for DRV2625 to power on:
+      k_msleep(10);
+      i2c_ready();
       uint8_t* data = read_transfer(CHIPID_REG, 1);
-      printk("Chip ID (should be 1): %x \n", data[0]);
+      printk("Chip ID (should be 1): %x \n", ((data[0] & CHIPID_MASK) >> 4));
 }

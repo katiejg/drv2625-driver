@@ -6,5 +6,5 @@ properties:
   gpios:
     type: phandle-array
     required: true
-    description: |
+    description:
       The GPIO connected to the switch that controls DRV VDD.

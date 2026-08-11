@@ -13,6 +13,9 @@ int main(void) {
         myMotor.isLRA = true;
 
         drv2625_init(&myMotor);
+        // turn off after 5 seconds
+        // k_msleep(5000);
+        // switch_set(0);
         
         return 0;
 }

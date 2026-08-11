@@ -67,5 +67,4 @@ struct motor {
 
 /* PUBLIC FUNCTIONS */
 void drv2625_init(struct motor* myMotor);
-void switch_init();
-void switch_set(uint8_t level);
+void switch_set(int level);
