@@ -11,6 +11,7 @@
 #define CHIPID_REG 0x00
 #define DIAG_RESULT_REG 0x01
 #define MODE_REG 0x07
+#define TRIG_PIN_FUNC_REG 0x07
 #define AUTO_BRK_OL_REG 0x08
 #define AUTO_BRK_INTO_STBY_REG 0x08
 #define CONTROL_LOOP_REG 0x08
@@ -40,6 +41,7 @@
 #define CHIPID_MASK 0xf0
 #define DIAG_RESULT_MASK 0x80
 #define MODE_MASK 0x03
+#define TRIG_PIN_FUNC_MASK 0x0c
 #define AUTO_BRK_OL_MASK 0x10
 #define AUTO_BRK_INTO_STBY_MASK 0x08
 #define CONTROL_LOOP_MASK 0x40
@@ -66,5 +68,6 @@ struct motor {
 };
 
 /* PUBLIC FUNCTIONS */
-void drv2625_init(struct motor* motorPtr);
+void drv2625_init(struct motor* motorPtr, uint8_t isOpenLoop);
+void waveform_sequencer(uint8_t effect_id, uint8_t main_loop_count);
 void power_down();

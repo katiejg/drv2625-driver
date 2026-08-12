@@ -12,10 +12,11 @@ int main(void) {
         myMotor.olLRAPeriod = 169;
         myMotor.isLRA = 1;
 
-        drv2625_init(&myMotor);
+        drv2625_init(&myMotor, 0); // closed loop
         // turn off after 5 seconds
         // k_msleep(5000);
         // power_down(0);
+        waveform_sequencer(1, 7);
         
         return 0;
 }

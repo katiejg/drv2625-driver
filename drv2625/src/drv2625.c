@@ -91,6 +91,7 @@ static void autocalibrate(struct motor* motorPtr) {
       buf = read_transfer(GO_REG) | GO_MASK;
       write_transfer(GO_REG, buf);
       // GO automatically clears when process is complete
+      while (read_transfer(GO_REG) & GO_MASK);
 
       // Check DIAG_RESULT for success
       uint8_t diagnostic = read_transfer(DIAG_RESULT_REG) & DIAG_RESULT_MASK;
@@ -99,10 +100,43 @@ static void autocalibrate(struct motor* motorPtr) {
             printk("Failed to auto-calibrate\n\r");
             return;
       }
-      printk("Auto-calibration complete\n\r");
+      printk("Auto-calibration complete\n");
 }
 
-void drv2625_init(struct motor* motorPtr) {
+// Configuration for Closed Loop Architecture
+static void closed_loop_config() {
+      // Clear CONTROL_LOOP bit
+      uint8_t buf = read_transfer(CONTROL_LOOP_REG) & ~(CONTROL_LOOP_MASK);
+      write_transfer(CONTROL_LOOP_REG, buf);
+      // Set to enable auto-braking
+      buf = read_transfer(AUTO_BRK_INTO_STBY_REG) | AUTO_BRK_INTO_STBY_MASK;
+      write_transfer(AUTO_BRK_INTO_STBY_REG, buf);
+
+      printk("Configured for Closed Loop\n");
+}
+
+// Configuration for Open Loop Architecture
+static void open_loop_config(uint16_t olLRAPeriod) {
+      // Set CONTROL_LOOP bit
+      uint8_t buf = read_transfer(CONTROL_LOOP_REG) | CONTROL_LOOP_MASK;
+      write_transfer(CONTROL_LOOP_REG, buf);
+      // Set to enable auto-braking
+      buf = read_transfer(AUTO_BRK_INTO_STBY_REG) | AUTO_BRK_INTO_STBY_MASK;
+      write_transfer(AUTO_BRK_INTO_STBY_REG, buf);
+      // Set to enable OL auto-braking
+      buf = read_transfer(AUTO_BRK_OL_REG) | AUTO_BRK_OL_MASK;
+      write_transfer(AUTO_BRK_OL_REG, buf);
+      // Establish driving frequency for LRA in open loop
+      buf = (uint8_t)(olLRAPeriod & ~(0xff00));
+      write_transfer(OL_LRA_PERIOD_REG_LOWER, buf);
+      buf = (uint8_t)((olLRAPeriod & ~(0xff)) >> 8);
+      buf += read_transfer(OL_LRA_PERIOD_REG_UPPER) & ~(OL_LRA_PERIOD_MASK_UPPER);
+      write_transfer(OL_LRA_PERIOD_REG_UPPER, buf);
+
+      printk("Configured for Open Loop\n\r");
+}
+
+void drv2625_init(struct motor* motorPtr, uint8_t isOpenLoop) {
       // Turn on GPIOs
       switch_init();
       switch_set(1);
@@ -119,10 +153,74 @@ void drv2625_init(struct motor* motorPtr) {
 
       // Autocalibrate for each power-up
       autocalibrate(motorPtr);
+
+      // Exit autocalibration mode
+      data = read_transfer(MODE_REG);
+      write_transfer(MODE_REG, (data & ~(MODE_MASK)));
+
+      // Select library and configure for open/close loop
+      if (isOpenLoop) {
+            data = read_transfer(LIB_SEL_REG) & ~(LIB_SEL_MASK);
+            write_transfer(LIB_SEL_REG, data);
+            open_loop_config(motorPtr->olLRAPeriod);
+      } else {
+            data = read_transfer(LIB_SEL_REG) | (LIB_SEL_MASK);
+            write_transfer(LIB_SEL_REG, data);
+            closed_loop_config();
+      }
+
+      // Allow GO to trigger waveform sequencer (clear reg)
+      data = read_transfer(TRIG_PIN_FUNC_REG);
+      write_transfer(TRIG_PIN_FUNC_REG, (data & ~(TRIG_PIN_FUNC_MASK)));
 }
 
 // Turn off DRV_VDD
 void power_down() {
       switch_set(0);
       printk("Haptics driver powered off.\n");
+}
+
+// TODO: Implement RTP Mode
+
+/**
+ * @brief Assumes using an effect from the library
+ * 
+ * @param effect_id See 9.1.1 Waveform Library Effects List
+ * @param main_loop_count See Table 8-27
+ */
+void waveform_sequencer(uint8_t effect_id, uint8_t main_loop_count) {
+      // Make sure params are valid:
+      if (effect_id > 123 || effect_id < 1) {
+            printk("Invalid effect ID\n\r");
+            return;
+      }
+      if (main_loop_count > 7) {
+            printk("Invalid loop count number (max. 7)\n\r");
+            return;
+      }
+
+      // STEP 1: Set MODE to 1 to select Waveform Sequencer
+      uint8_t buf = (read_transfer(MODE_REG) & ~(MODE_MASK)) + 0x01;
+      write_transfer(MODE_REG, buf);
+
+      // STEP 3: Clear WAIT to indicate SEQ holds a wavefrom identifier
+      buf = read_transfer(WAV_FRM_SEQ1_REG) & ~(WAITn_MASK);
+      write_transfer(WAV_FRM_SEQ1_REG, buf);
+      // Populate with ID
+      buf = (read_transfer(WAV_FRM_SEQ1_REG) & ~(WAV_FRM_SEQn_MASK)) + effect_id;
+      write_transfer(WAV_FRM_SEQ1_REG, buf);
+      // Terminate SEQ
+      buf = read_transfer(WAV_FRM_SEQ2_REG) & ~(WAV_FRM_SEQn_MASK);
+      write_transfer(WAV_FRM_SEQ2_REG, buf);
+
+      // TODO STEP 4: Allow loop control of each sequence. For now, leave WAVn_SEQ_LOOP as default.
+
+      // STEP 5: Set main loop control
+      buf = (read_transfer(WAV_SEQ_MAIN_LOOP_REG) & ~(WAV_SEQ_MAIN_LOOP_MASK)) + main_loop_count;
+      write_transfer(WAV_SEQ_MAIN_LOOP_REG, buf);
+
+      // STEP 6: Trigger waveform with GO bit
+      buf = read_transfer(GO_REG) | GO_MASK;
+      write_transfer(GO_REG, buf);
+      // GO automatically clears when process is complete
 }
