@@ -66,5 +66,5 @@ struct motor {
 };
 
 /* PUBLIC FUNCTIONS */
-void drv2625_init();
+void drv2625_init(struct motor* motorPtr);
 void power_down();

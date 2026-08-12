@@ -66,31 +66,8 @@ static void switch_set(int level) {
       printk("Setting GPIO pin level (%i)", level);
 }
 
-void drv2625_init() {
-      // Turn on GPIOs
-      switch_init();
-      switch_set(1);
-
-      // Required delay for DRV2625 to power on:
-      k_msleep(10);
-      i2c_ready();
-      uint8_t data = read_transfer(CHIPID_REG);
-      printk("Chip ID (should be 1): %x \n", ((data & CHIPID_MASK) >> 4));
-
-      // Remove device from standby by writing to 0x00 to MODE:
-      data = read_transfer(MODE_REG);
-      write_transfer(MODE_REG, (data & ~(MODE_MASK)));
-
-      // Pass relevant parameters to auto-calibration engine:
-}
-
-// Turn off DRV_VDD
-void power_down() {
-      switch_set(0);
-      printk("Haptics driver powered off.\n");
-}
-
-void autocalibrate(struct motor* motorPtr) {
+/* DRV2625 SETUP ROUTINES */
+static void autocalibrate(struct motor* motorPtr) {
       // Set auto-calibration routine (MODE[1:0] = 0x03)
       uint8_t buf = read_transfer(MODE_REG) | MODE_MASK;
       write_transfer(MODE_REG, buf);
@@ -115,4 +92,37 @@ void autocalibrate(struct motor* motorPtr) {
       write_transfer(GO_REG, buf);
       // GO automatically clears when process is complete
 
+      // Check DIAG_RESULT for success
+      uint8_t diagnostic = read_transfer(DIAG_RESULT_REG) & DIAG_RESULT_MASK;
+      if (diagnostic) {
+            // DIAG_RESULT is high if a fault is detected
+            printk("Failed to auto-calibrate\n\r");
+            return;
+      }
+      printk("Auto-calibration complete\n\r");
+}
+
+void drv2625_init(struct motor* motorPtr) {
+      // Turn on GPIOs
+      switch_init();
+      switch_set(1);
+
+      // Required delay for DRV2625 to power on:
+      k_msleep(10);
+      i2c_ready();
+      uint8_t data = read_transfer(CHIPID_REG);
+      printk("DRV2625 Chip ID (should be 1): %x \n", ((data & CHIPID_MASK) >> 4));
+
+      // Remove device from standby by writing to 0x00 to MODE:
+      data = read_transfer(MODE_REG);
+      write_transfer(MODE_REG, (data & ~(MODE_MASK)));
+
+      // Autocalibrate for each power-up
+      autocalibrate(motorPtr);
+}
+
+// Turn off DRV_VDD
+void power_down() {
+      switch_set(0);
+      printk("Haptics driver powered off.\n");
 }
