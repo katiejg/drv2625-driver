@@ -10,12 +10,12 @@ int main(void) {
         myMotor.odClamp = 41;
         myMotor.driveTime = 16; // LRA Drive Time = 2.1ms
         myMotor.olLRAPeriod = 169;
-        myMotor.isLRA = true;
+        myMotor.isLRA = 1;
 
         drv2625_init(&myMotor);
         // turn off after 5 seconds
         // k_msleep(5000);
-        // switch_set(0);
+        // power_down(0);
         
         return 0;
 }

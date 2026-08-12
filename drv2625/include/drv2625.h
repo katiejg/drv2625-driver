@@ -19,7 +19,7 @@
 #define LIB_SEL_REG 0x0d
 #define RTP_INPUT_REG 0x0e
 
-// WAV_FROM_SEQ Regs
+// WAV_FRM_SEQ Regs
 #define WAV_FRM_SEQ1_REG 0x0f
 #define WAV_FRM_SEQ2_REG 0x10
 #define WAV_FRM_SEQ3_REG 0x11
@@ -62,9 +62,9 @@ struct motor {
         uint8_t odClamp; // Calculated with Eq. 8/9 in DRV2625 datasheet
         // DRIVE_TIME[4:0] is the five least significant bits of driveTime.
         uint8_t driveTime; // (default=0x10) See 7.6.1.1 and Table 8-40 in the datasheet
-        bool isLRA;
+        uint8_t isLRA;
 };
 
 /* PUBLIC FUNCTIONS */
-void drv2625_init(struct motor* myMotor);
-void switch_set(int level);
+void drv2625_init();
+void power_down();
