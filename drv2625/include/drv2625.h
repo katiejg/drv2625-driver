@@ -24,6 +24,7 @@
 #define RTP_INPUT_REG 0x0e
 
 // WAV_FRM_SEQ Regs
+#define SEQ_SIZE 8
 #define WAV_FRM_SEQ1_REG 0x0f
 #define WAV_FRM_SEQ2_REG 0x10
 #define WAV_FRM_SEQ3_REG 0x11
@@ -32,6 +33,17 @@
 #define WAV_FRM_SEQ6_REG 0x14
 #define WAV_FRM_SEQ7_REG 0x15
 #define WAV_FRM_SEQ8_REG 0x16
+// enum wav_frm_seq {
+//         WAV_FRM_SEQ1_REG = 0x0f,
+//         WAV_FRM_SEQ2_REG,
+//         WAV_FRM_SEQ3_REG,
+//         WAV_FRM_SEQ4_REG,
+//         WAV_FRM_SEQ5_REG,
+//         WAV_FRM_SEQ6_REG,
+//         WAV_FRM_SEQ7_REG,
+//         WAV_FRM_SEQ8_REG
+// };
+
 
 #define WAV_SEQ_MAIN_LOOP_REG 0x19
 #define RATED_VOLTAGE_REG 0x1f
@@ -58,6 +70,12 @@
 #define OL_LRA_PERIOD_MASK_UPPER 0x03
 
 /* CONFIG ENUMS */
+enum Mode {
+        MODE_RTP = 0x00,
+        MODE_WAVEFORM_SEQ,
+        MODE_DIAG,
+        MODE_CALIBRATION
+};
 
 /* MOTOR STRUCT */
 struct motor {

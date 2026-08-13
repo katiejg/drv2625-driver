@@ -10,6 +10,33 @@
 #include "drv2625.h"
 #include <zephyr/sys/printk.h>
 
+/* SWITCH SETUP */
+static const struct gpio_dt_spec drv_switch = GPIO_DT_SPEC_GET_OR(DT_NODELABEL(drv_switch), gpios, {0});
+
+static void switch_init() {
+      if (!gpio_is_ready_dt(&drv_switch)) {
+            printk("The switch pin GPIO port is not ready!\n\r");
+            return;
+      }
+      uint8_t err = gpio_pin_configure_dt(&drv_switch, GPIO_OUTPUT_ACTIVE);
+      if (err != 0) {
+            printk("Configuring GPIO pin to output failed.\n");
+            return;
+      }
+      printk("Configured GPIO pin to output\n");
+}
+
+// level should be either 0 (LOW/OFF) or 1 (HIGH/ON)
+static void switch_set(int level) {
+      uint8_t err = gpio_pin_set_dt(&drv_switch, level);
+      if (err != 0) {
+            printk("Setting GPIO pin level failed\n");
+            return;
+      }
+      printk("Setting GPIO pin level (%i)", level);
+}
+
+/* I2C SETUP */
 static const struct i2c_dt_spec dev_i2c = I2C_DT_SPEC_GET(I2C_NODE);
 
 static void i2c_ready() {
@@ -40,46 +67,44 @@ static uint8_t read_transfer(uint8_t reg_addr) {
       return data[0];
 }
 
-/* SWITCH SETUP */
-static const struct gpio_dt_spec drv_switch = GPIO_DT_SPEC_GET_OR(DT_NODELABEL(drv_switch), gpios, {0});
-
-static void switch_init() {
-      if (!gpio_is_ready_dt(&drv_switch)) {
-            printk("The switch pin GPIO port is not ready!\n\r");
-            return;
-      }
-      uint8_t err = gpio_pin_configure_dt(&drv_switch, GPIO_OUTPUT_ACTIVE);
-      if (err != 0) {
-            printk("Configuring GPIO pin to output failed.\n");
-            return;
-      }
-      printk("Configured GPIO pin to output\n");
+/* DRV2625 HELPERS */
+static void set_go() {
+      uint8_t buf = read_transfer(GO_REG) | GO_MASK;
+      write_transfer(GO_REG, buf);
+      // GO automatically clears when process is complete
+      // TODO Change to polling, add timeout
+      while (read_transfer(GO_REG) & GO_MASK);
 }
 
-// level should be either 0 (LOW/OFF) or 1 (HIGH/ON)
-static void switch_set(int level) {
-      uint8_t err = gpio_pin_set_dt(&drv_switch, level);
-      if (err != 0) {
-            printk("Setting GPIO pin level failed\n");
-            return;
-      }
-      printk("Setting GPIO pin level (%i)", level);
+static void set_mode(enum Mode myMode) {
+      uint8_t buf = read_transfer(MODE_REG) & ~(MODE_MASK);
+      buf += myMode;
+      write_transfer(MODE_REG, buf);
 }
 
-/* DRV2625 SETUP ROUTINES */
+static uint8_t get_diag_result() {
+      uint8_t result = read_transfer(DIAG_RESULT_REG) & DIAG_RESULT_MASK;
+      if (result) {
+            // DIAG_RESULT is high if a fault is detected
+            printk("Process failed\n\r");
+      }
+      return result;
+}
+
+/* DRV2625 ROUTINES */
 static void autocalibrate(struct motor* motorPtr) {
       // Set auto-calibration routine (MODE[1:0] = 0x03)
-      uint8_t buf = read_transfer(MODE_REG) | MODE_MASK;
-      write_transfer(MODE_REG, buf);
-
+      set_mode(MODE_CALIBRATION);
+      
       // Print motor parameters (debug)
       printk("Rated Voltage: %02i\n", motorPtr->ratedVoltage);
       printk("OD Clamp: %02i\n", motorPtr->odClamp);
       printk("Drive Time: %02i\n", motorPtr->driveTime);
       printk("OL LRA Period: %02i\n", motorPtr->olLRAPeriod);
       printk("is LRA?: %02i\n", motorPtr->isLRA);
-
+      
       // Pass relevant parameters to auto-calibration engine:
+      uint8_t buf;
       if (motorPtr->isLRA) {
             buf = read_transfer(LRA_ERM_REG) | LRA_ERM_MASK;
       } else {
@@ -95,18 +120,15 @@ static void autocalibrate(struct motor* motorPtr) {
       write_transfer(DRIVE_TIME_REG, buf);
 
       // Start auto-calibration process
-      buf = read_transfer(GO_REG) | GO_MASK;
-      write_transfer(GO_REG, buf);
-      // GO automatically clears when process is complete
-      while (read_transfer(GO_REG) & GO_MASK);
+      set_go();
 
       // Check DIAG_RESULT for success
-      uint8_t diagnostic = read_transfer(DIAG_RESULT_REG) & DIAG_RESULT_MASK;
+      uint8_t diagnostic = get_diag_result();
       if (diagnostic) {
-            // DIAG_RESULT is high if a fault is detected
-            printk("Failed to auto-calibrate\n\r");
+            printk("Auto-calibration failed\n");
             return;
       }
+      
       printk("Auto-calibration complete\n");
 }
 
@@ -143,7 +165,7 @@ static void open_loop_config(uint16_t olLRAPeriod) {
       buf += read_transfer(OL_LRA_PERIOD_REG_UPPER) & ~(OL_LRA_PERIOD_MASK_UPPER);
       write_transfer(OL_LRA_PERIOD_REG_UPPER, buf);
 
-      printk("Configured for Open Loop\n\r");
+      printk("Configured for Open Loop\n");
 }
 
 void drv2625_init(struct motor* motorPtr, uint8_t isOpenLoop) {
@@ -158,15 +180,14 @@ void drv2625_init(struct motor* motorPtr, uint8_t isOpenLoop) {
       printk("DRV2625 Chip ID (should be 1): %x \n", ((data & CHIPID_MASK) >> 4));
 
       // Remove device from standby by writing to 0x00 to MODE:
-      data = read_transfer(MODE_REG);
-      write_transfer(MODE_REG, (data & ~(MODE_MASK)));
+      set_mode(MODE_RTP);
 
       // Autocalibrate for each power-up
       autocalibrate(motorPtr);
 
       // Exit autocalibration mode
-      data = read_transfer(MODE_REG);
-      write_transfer(MODE_REG, (data & ~(MODE_MASK)));
+      // data = read_transfer(MODE_REG);
+      // write_transfer(MODE_REG, (data & ~(MODE_MASK)));
 
       // Select library and configure for open/close loop
       if (isOpenLoop) {
@@ -192,6 +213,31 @@ void power_down() {
 
 // TODO: Implement RTP Mode
 
+static void set_waveform(uint8_t effect_id) {
+      // unsigned char loop[2] = {0};
+      unsigned char effects[SEQ_SIZE] = {0};
+      unsigned char len = 1;
+      effects[0] = effect_id;
+
+      // for (int i=0; i < SEQ_SIZE; i++) {
+      //       len++;
+      //       // if (i < 4) {
+      //       //       loop[0] = 1; // TODO Allow loop control of each sequence
+      //       // } else {
+      //       //       loop[1] = 1;
+      //       // }
+      //       effects[i] = effect_id;
+      // }
+
+      if (len == 1) {
+            write_transfer(WAV_FRM_SEQ1_REG, 0);
+      } else {
+            for (int i=0; i < len; i++) {
+                  write_transfer((WAV_FRM_SEQ1_REG+i), effect_id);
+            }
+      }
+}
+
 /**
  * @brief Assumes using an effect from the library
  * 
@@ -216,9 +262,10 @@ void waveform_sequencer(uint8_t effect_id, uint8_t main_loop_count) {
       // STEP 3: Clear WAIT to indicate SEQ holds a wavefrom identifier
       buf = read_transfer(WAV_FRM_SEQ1_REG) & ~(WAITn_MASK);
       write_transfer(WAV_FRM_SEQ1_REG, buf);
-      // Populate with ID
-      buf = (read_transfer(WAV_FRM_SEQ1_REG) & ~(WAV_FRM_SEQn_MASK)) + effect_id;
-      write_transfer(WAV_FRM_SEQ1_REG, buf);
+      set_waveform(effect_id);
+      // // Populate with ID
+      // buf = (read_transfer(WAV_FRM_SEQ1_REG) & ~(WAV_FRM_SEQn_MASK)) + effect_id;
+      // write_transfer(WAV_FRM_SEQ1_REG, buf);
       // Terminate SEQ
       buf = read_transfer(WAV_FRM_SEQ2_REG) & ~(WAV_FRM_SEQn_MASK);
       write_transfer(WAV_FRM_SEQ2_REG, buf);
