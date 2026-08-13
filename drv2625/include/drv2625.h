@@ -1,3 +1,6 @@
+#ifndef DRV2625_H
+#define DRV2625_H
+
 /* INCLUDE */
 #include <stdint.h>
 #include <zephyr/devicetree.h>
@@ -71,3 +74,5 @@ struct motor {
 void drv2625_init(struct motor* motorPtr, uint8_t isOpenLoop);
 void waveform_sequencer(uint8_t effect_id, uint8_t main_loop_count);
 void power_down();
+
+#endif // DRV2625_H

@@ -72,6 +72,13 @@ static void autocalibrate(struct motor* motorPtr) {
       uint8_t buf = read_transfer(MODE_REG) | MODE_MASK;
       write_transfer(MODE_REG, buf);
 
+      // Print motor parameters (debug)
+      printk("Rated Voltage: %02i\n", motorPtr->ratedVoltage);
+      printk("OD Clamp: %02i\n", motorPtr->odClamp);
+      printk("Drive Time: %02i\n", motorPtr->driveTime);
+      printk("OL LRA Period: %02i\n", motorPtr->olLRAPeriod);
+      printk("is LRA?: %02i\n", motorPtr->isLRA);
+
       // Pass relevant parameters to auto-calibration engine:
       if (motorPtr->isLRA) {
             buf = read_transfer(LRA_ERM_REG) | LRA_ERM_MASK;
@@ -111,6 +118,9 @@ static void closed_loop_config() {
       // Set to enable auto-braking
       buf = read_transfer(AUTO_BRK_INTO_STBY_REG) | AUTO_BRK_INTO_STBY_MASK;
       write_transfer(AUTO_BRK_INTO_STBY_REG, buf);
+      // Set to enable OL auto-braking
+      buf = read_transfer(AUTO_BRK_OL_REG) | AUTO_BRK_OL_MASK;
+      write_transfer(AUTO_BRK_OL_REG, buf);
 
       printk("Configured for Closed Loop\n");
 }
