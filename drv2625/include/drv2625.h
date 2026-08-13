@@ -13,6 +13,7 @@
 /* REGISTERS */
 #define CHIPID_REG 0x00
 #define DIAG_RESULT_REG 0x01
+#define DIAG_Z_RESULT_REG 0x03
 #define MODE_REG 0x07
 #define TRIG_PIN_FUNC_REG 0x07
 #define AUTO_BRK_OL_REG 0x08
@@ -22,6 +23,10 @@
 #define GO_REG 0x0c
 #define LIB_SEL_REG 0x0d
 #define RTP_INPUT_REG 0x0e
+#define A_CAL_COMP_REG 0x21
+#define A_CAL_BEMF_REG 0x22
+#define BEMF_GAIN_REG 0x23
+#define CURRENT_K_REG 0x30
 
 // WAV_FRM_SEQ Regs
 #define SEQ_SIZE 8
@@ -68,14 +73,20 @@
 #define WAV_SEQ_MAIN_LOOP_MASK 0x07
 #define DRIVE_TIME_MASK 0x1f
 #define OL_LRA_PERIOD_MASK_UPPER 0x03
+#define BEMF_GAIN_MASK 0x03
 
-/* CONFIG ENUMS */
-enum Mode {
-        MODE_RTP = 0x00,
-        MODE_WAVEFORM_SEQ,
-        MODE_DIAG,
-        MODE_CALIBRATION
-};
+
+/* CONFIG DEFINES */
+// enum Mode {
+//         MODE_RTP = 0x00,
+//         MODE_WAVEFORM_SEQ,
+//         MODE_DIAG,
+//         MODE_CALIBRATION
+// };
+#define MODE_RTP 0x00
+#define MODE_WAVEFORM_SEQ 0x01
+#define MODE_DIAG 0x02
+#define MODE_CALIBRATION 0x03
 
 /* MOTOR STRUCT */
 struct motor {

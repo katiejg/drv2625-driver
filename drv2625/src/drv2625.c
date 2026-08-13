@@ -76,9 +76,9 @@ static void set_go() {
       while (read_transfer(GO_REG) & GO_MASK);
 }
 
-static void set_mode(enum Mode myMode) {
+static void set_mode(uint8_t mode) {
       uint8_t buf = read_transfer(MODE_REG) & ~(MODE_MASK);
-      buf += myMode;
+      buf += mode;
       write_transfer(MODE_REG, buf);
 }
 
@@ -86,7 +86,25 @@ static uint8_t get_diag_result() {
       uint8_t result = read_transfer(DIAG_RESULT_REG) & DIAG_RESULT_MASK;
       if (result) {
             // DIAG_RESULT is high if a fault is detected
-            printk("Process failed\n\r");
+            printk("Process failed\n", result);
+      }
+      return result;
+}
+
+static uint8_t run_diagnostics() {
+      set_mode(MODE_DIAG);
+      printk("MODE_REG after set: %02x\n", read_transfer(MODE_REG));
+      set_go();  // actually trigger the routine this time
+
+      uint8_t diagZ = read_transfer(DIAG_Z_RESULT_REG);
+      printk("DIAG_Z_RESULT: %02x\n", diagZ);
+
+      uint8_t currK = read_transfer(CURRENT_K_REG);
+      printk("CURRENT K: %02x\n", currK);
+
+      uint8_t result = read_transfer(DIAG_RESULT_REG) & DIAG_RESULT_MASK;
+      if (result) {
+            printk("Diagnostics: actuator open, shorted, or invalid BEMF\n");
       }
       return result;
 }
@@ -122,13 +140,18 @@ static void autocalibrate(struct motor* motorPtr) {
       // Start auto-calibration process
       set_go();
 
+      // Check auto-calibration results:
+      printk("BEMF Gain (default 0x02): %02x\n", (read_transfer(BEMF_GAIN_REG) & BEMF_GAIN_MASK));
+      printk("A_CAL_COMP (default 0x0D): %02x\n", read_transfer(A_CAL_COMP_REG));
+      printk("A_CAL_BEMF (default 0x6D): %02x\n", read_transfer(A_CAL_BEMF_REG));
+
       // Check DIAG_RESULT for success
       uint8_t diagnostic = get_diag_result();
       if (diagnostic) {
             printk("Auto-calibration failed\n");
             return;
       }
-      
+
       printk("Auto-calibration complete\n");
 }
 
@@ -140,10 +163,6 @@ static void closed_loop_config() {
       // Set to enable auto-braking
       buf = read_transfer(AUTO_BRK_INTO_STBY_REG) | AUTO_BRK_INTO_STBY_MASK;
       write_transfer(AUTO_BRK_INTO_STBY_REG, buf);
-      // Set to enable OL auto-braking
-      buf = read_transfer(AUTO_BRK_OL_REG) | AUTO_BRK_OL_MASK;
-      write_transfer(AUTO_BRK_OL_REG, buf);
-
       printk("Configured for Closed Loop\n");
 }
 
@@ -179,9 +198,14 @@ void drv2625_init(struct motor* motorPtr, uint8_t isOpenLoop) {
       uint8_t data = read_transfer(CHIPID_REG);
       printk("DRV2625 Chip ID (should be 1): %x \n", ((data & CHIPID_MASK) >> 4));
 
+      // Allow GO to trigger starts
+      data = read_transfer(TRIG_PIN_FUNC_REG) & ~(TRIG_PIN_FUNC_MASK);
+      write_transfer(TRIG_PIN_FUNC_REG, data);
+
+      run_diagnostics();
+
       // Remove device from standby by writing to 0x00 to MODE:
       set_mode(MODE_RTP);
-
       // Autocalibrate for each power-up
       autocalibrate(motorPtr);
 
@@ -189,20 +213,18 @@ void drv2625_init(struct motor* motorPtr, uint8_t isOpenLoop) {
       // data = read_transfer(MODE_REG);
       // write_transfer(MODE_REG, (data & ~(MODE_MASK)));
 
+      // Set Actuator Type Parameters
+
       // Select library and configure for open/close loop
       if (isOpenLoop) {
-            data = read_transfer(LIB_SEL_REG) & ~(LIB_SEL_MASK);
+            data = read_transfer(LIB_SEL_REG) | (LIB_SEL_MASK);
             write_transfer(LIB_SEL_REG, data);
             open_loop_config(motorPtr->olLRAPeriod);
       } else {
-            data = read_transfer(LIB_SEL_REG) | (LIB_SEL_MASK);
+            data = read_transfer(LIB_SEL_REG) & ~(LIB_SEL_MASK);
             write_transfer(LIB_SEL_REG, data);
             closed_loop_config();
       }
-
-      // Allow GO to trigger waveform sequencer (clear reg)
-      data = read_transfer(TRIG_PIN_FUNC_REG);
-      write_transfer(TRIG_PIN_FUNC_REG, (data & ~(TRIG_PIN_FUNC_MASK)));
 }
 
 // Turn off DRV_VDD
@@ -262,10 +284,10 @@ void waveform_sequencer(uint8_t effect_id, uint8_t main_loop_count) {
       // STEP 3: Clear WAIT to indicate SEQ holds a wavefrom identifier
       buf = read_transfer(WAV_FRM_SEQ1_REG) & ~(WAITn_MASK);
       write_transfer(WAV_FRM_SEQ1_REG, buf);
-      set_waveform(effect_id);
+      // set_waveform(effect_id);
       // // Populate with ID
-      // buf = (read_transfer(WAV_FRM_SEQ1_REG) & ~(WAV_FRM_SEQn_MASK)) + effect_id;
-      // write_transfer(WAV_FRM_SEQ1_REG, buf);
+      buf = (read_transfer(WAV_FRM_SEQ1_REG) & ~(WAV_FRM_SEQn_MASK)) + effect_id;
+      write_transfer(WAV_FRM_SEQ1_REG, buf);
       // Terminate SEQ
       buf = read_transfer(WAV_FRM_SEQ2_REG) & ~(WAV_FRM_SEQn_MASK);
       write_transfer(WAV_FRM_SEQ2_REG, buf);
@@ -277,7 +299,5 @@ void waveform_sequencer(uint8_t effect_id, uint8_t main_loop_count) {
       write_transfer(WAV_SEQ_MAIN_LOOP_REG, buf);
 
       // STEP 6: Trigger waveform with GO bit
-      buf = read_transfer(GO_REG) | GO_MASK;
-      write_transfer(GO_REG, buf);
-      // GO automatically clears when process is complete
+      set_go();
 }
