@@ -80,6 +80,7 @@ static void set_mode(uint8_t mode) {
       uint8_t buf = read_transfer(MODE_REG) & ~(MODE_MASK);
       buf += mode;
       write_transfer(MODE_REG, buf);
+      printk("Set mode (%x)\n", mode);
 }
 
 static uint8_t get_diag_result() {
@@ -110,24 +111,22 @@ static uint8_t run_diagnostics() {
 }
 
 /* DRV2625 ROUTINES */
-static void autocalibrate(struct motor* motorPtr) {
-      // Set auto-calibration routine (MODE[1:0] = 0x03)
-      set_mode(MODE_CALIBRATION);
-      
+static void set_motor_params(struct motor* motorPtr) {
       // Print motor parameters (debug)
       printk("Rated Voltage: %02i\n", motorPtr->ratedVoltage);
       printk("OD Clamp: %02i\n", motorPtr->odClamp);
       printk("Drive Time: %02i\n", motorPtr->driveTime);
       printk("OL LRA Period: %02i\n", motorPtr->olLRAPeriod);
-      printk("is LRA?: %02i\n", motorPtr->isLRA);
-      
-      // Pass relevant parameters to auto-calibration engine:
+      printk("LRA?: %02i\n", motorPtr->isLRA);
+
       uint8_t buf;
       if (motorPtr->isLRA) {
             buf = read_transfer(LRA_ERM_REG) | LRA_ERM_MASK;
       } else {
             buf = read_transfer(LRA_ERM_REG) & ~(LRA_ERM_MASK);
       }
+
+
       write_transfer(LRA_ERM_REG, buf);
       // Configure RATED_VOLTAGE
       write_transfer(RATED_VOLTAGE_REG, motorPtr->ratedVoltage);
@@ -136,7 +135,13 @@ static void autocalibrate(struct motor* motorPtr) {
       // Configure DRIVE_TIME
       buf = (read_transfer(DRIVE_TIME_REG) & ~(DRIVE_TIME_MASK)) + (motorPtr->driveTime & DRIVE_TIME_MASK);
       write_transfer(DRIVE_TIME_REG, buf);
+}
 
+static void autocalibrate(struct motor* motorPtr) {
+      // Pass relevant parameters to auto-calibration engine:
+      set_motor_params(motorPtr);
+      // Set auto-calibration routine (MODE[1:0] = 0x03)
+      set_mode(MODE_CALIBRATION);
       // Start auto-calibration process
       set_go();
 
@@ -213,8 +218,6 @@ void drv2625_init(struct motor* motorPtr, uint8_t isOpenLoop) {
       // data = read_transfer(MODE_REG);
       // write_transfer(MODE_REG, (data & ~(MODE_MASK)));
 
-      // Set Actuator Type Parameters
-
       // Select library and configure for open/close loop
       if (isOpenLoop) {
             data = read_transfer(LIB_SEL_REG) | (LIB_SEL_MASK);
@@ -233,29 +236,55 @@ void power_down() {
       printk("Haptics driver powered off.\n");
 }
 
+/* PLAYBACK MODES */
 // TODO: Implement RTP Mode
 
-static void set_waveform(uint8_t effect_id) {
-      // unsigned char loop[2] = {0};
-      unsigned char effects[SEQ_SIZE] = {0};
-      unsigned char len = 1;
-      effects[0] = effect_id;
+static void play_effect() {
+      set_mode(MODE_WAVEFORM_SEQ);
+      set_go();
+      printk("Effect start\n");
+}
 
-      // for (int i=0; i < SEQ_SIZE; i++) {
-      //       len++;
-      //       // if (i < 4) {
-      //       //       loop[0] = 1; // TODO Allow loop control of each sequence
-      //       // } else {
-      //       //       loop[1] = 1;
-      //       // }
-      //       effects[i] = effect_id;
-      // }
+// static void config_waveform(struct wave_setting * settingPtr) {
+//       int value = 0;
+//       write_transfer(WAV_SEQ_MAIN_LOOP_REG, settingPtr->loop & 0x07);
+//       value |= ((settingPtr->interval & 0x01) << 0x05);
+//       value |= (settingPtr->scale & 0x03);
+//       // TODO write values into control2 
+// };
+
+static void set_waveform(struct waveform_sequencer *seqPtr) {
+      int i = 0;
+      unsigned char loop[2] = {0};
+      unsigned char effects[SEQ_SIZE] = {0};
+      unsigned char len = 0;
+
+      for (i = 0; i < SEQ_SIZE; i++) {
+            len++;
+            if (seqPtr->waveform[i].effect != 0) {
+                  if (i < 4) {
+                        loop[0] |= (seqPtr->waveform[i].loop << (2*i));
+                  } else {
+                        loop[1] |= (seqPtr->waveform[i].loop << (2*(i-4)));
+                  }
+                  effects[i] = seqPtr->waveform[i].effect;
+            } else {
+                  break;
+            }
+      }
 
       if (len == 1) {
             write_transfer(WAV_FRM_SEQ1_REG, 0);
       } else {
-            for (int i=0; i < len; i++) {
-                  write_transfer((WAV_FRM_SEQ1_REG+i), effect_id);
+            for (i=0; i<len; i++) {
+                  write_transfer((WAV_FRM_SEQ1_REG+i), effects[i])
+            }
+      }
+
+      if (len > 1) {
+            write_transfer(WAV1_SEQ_LOOP_REG, loop[0]);
+            if (!((len-1) <= 4)) {
+                  write_transfer(WAV5_SEQ_LOOP_REG, loop[1]);
             }
       }
 }
@@ -277,13 +306,10 @@ void waveform_sequencer(uint8_t effect_id, uint8_t main_loop_count) {
             return;
       }
 
-      // STEP 1: Set MODE to 1 to select Waveform Sequencer
-      uint8_t buf = (read_transfer(MODE_REG) & ~(MODE_MASK)) + 0x01;
-      write_transfer(MODE_REG, buf);
-
-      // STEP 3: Clear WAIT to indicate SEQ holds a wavefrom identifier
+      // Clear WAIT to indicate SEQ holds a wavefrom identifier
       buf = read_transfer(WAV_FRM_SEQ1_REG) & ~(WAITn_MASK);
       write_transfer(WAV_FRM_SEQ1_REG, buf);
+
       // set_waveform(effect_id);
       // // Populate with ID
       buf = (read_transfer(WAV_FRM_SEQ1_REG) & ~(WAV_FRM_SEQn_MASK)) + effect_id;
@@ -298,6 +324,5 @@ void waveform_sequencer(uint8_t effect_id, uint8_t main_loop_count) {
       buf = (read_transfer(WAV_SEQ_MAIN_LOOP_REG) & ~(WAV_SEQ_MAIN_LOOP_MASK)) + main_loop_count;
       write_transfer(WAV_SEQ_MAIN_LOOP_REG, buf);
 
-      // STEP 6: Trigger waveform with GO bit
-      set_go();
+      play_effect();
 }

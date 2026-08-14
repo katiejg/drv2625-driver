@@ -49,8 +49,9 @@
 //         WAV_FRM_SEQ8_REG
 // };
 
-
 #define WAV_SEQ_MAIN_LOOP_REG 0x19
+#define WAV1_SEQ_LOOP_REG 0x17 // Also WAV2-4
+#define WAV5_SEQ_LOOP_REG 0x18 // Also WAV6-8
 #define RATED_VOLTAGE_REG 0x1f
 #define OD_CLAMP_REG 0x20
 #define DRIVE_TIME_REG 0x27
@@ -88,7 +89,7 @@
 #define MODE_DIAG 0x02
 #define MODE_CALIBRATION 0x03
 
-/* MOTOR STRUCT */
+/* STRUCTS */
 struct motor {
         // OL_LRA_PERIOD[9:0] is the nine least significant bits of olLRAPeriod.
         uint16_t olLRAPeriod; // default=198
@@ -97,6 +98,21 @@ struct motor {
         // DRIVE_TIME[4:0] is the five least significant bits of driveTime.
         uint8_t driveTime; // (default=0x10) See 7.6.1.1 and Table 8-40 in the datasheet
         uint8_t isLRA;
+};
+
+struct waveform {
+        unsigned char effect;
+        unsigned char loop;
+};
+
+struct waveform_sequencer {
+        struct waveform Waveform[SEQ_SIZE];
+};
+
+struct wave_setting {
+        unsigned char loop;
+        unsigned char interval;
+        unsigned char scale;
 };
 
 /* PUBLIC FUNCTIONS */
