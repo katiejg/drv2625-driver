@@ -191,46 +191,4 @@ void power_down() {
 }
 
 // TODO: Implement RTP Mode
-
-/**
- * @brief Assumes using an effect from the library
- * 
- * @param effect_id See 9.1.1 Waveform Library Effects List
- * @param main_loop_count See Table 8-27
- */
-void waveform_sequencer(uint8_t effect_id, uint8_t main_loop_count) {
-      // Make sure params are valid:
-      if (effect_id > 123 || effect_id < 1) {
-            printk("Invalid effect ID\n\r");
-            return;
-      }
-      if (main_loop_count > 7) {
-            printk("Invalid loop count number (max. 7)\n\r");
-            return;
-      }
-
-      // STEP 1: Set MODE to 1 to select Waveform Sequencer
-      uint8_t buf = (read_transfer(MODE_REG) & ~(MODE_MASK)) + 0x01;
-      write_transfer(MODE_REG, buf);
-
-      // STEP 3: Clear WAIT to indicate SEQ holds a wavefrom identifier
-      buf = read_transfer(WAV_FRM_SEQ1_REG) & ~(WAITn_MASK);
-      write_transfer(WAV_FRM_SEQ1_REG, buf);
-      // Populate with ID
-      buf = (read_transfer(WAV_FRM_SEQ1_REG) & ~(WAV_FRM_SEQn_MASK)) + effect_id;
-      write_transfer(WAV_FRM_SEQ1_REG, buf);
-      // Terminate SEQ
-      buf = read_transfer(WAV_FRM_SEQ2_REG) & ~(WAV_FRM_SEQn_MASK);
-      write_transfer(WAV_FRM_SEQ2_REG, buf);
-
-      // TODO STEP 4: Allow loop control of each sequence. For now, leave WAVn_SEQ_LOOP as default.
-
-      // STEP 5: Set main loop control
-      buf = (read_transfer(WAV_SEQ_MAIN_LOOP_REG) & ~(WAV_SEQ_MAIN_LOOP_MASK)) + main_loop_count;
-      write_transfer(WAV_SEQ_MAIN_LOOP_REG, buf);
-
-      // STEP 6: Trigger waveform with GO bit
-      buf = read_transfer(GO_REG) | GO_MASK;
-      write_transfer(GO_REG, buf);
-      // GO automatically clears when process is complete
-}
+// TODO: Implement Waveform Sequencer
