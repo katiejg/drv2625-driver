@@ -261,13 +261,13 @@ static void set_waveform(struct waveform_sequencer *seqPtr) {
 
       for (i = 0; i < SEQ_SIZE; i++) {
             len++;
-            if (seqPtr->waveform[i].effect != 0) {
+            if (seqPtr->Waveform[i].effect != 0) {
                   if (i < 4) {
-                        loop[0] |= (seqPtr->waveform[i].loop << (2*i));
+                        loop[0] |= (seqPtr->Waveform[i].loop << (2*i));
                   } else {
-                        loop[1] |= (seqPtr->waveform[i].loop << (2*(i-4)));
+                        loop[1] |= (seqPtr->Waveform[i].loop << (2*(i-4)));
                   }
-                  effects[i] = seqPtr->waveform[i].effect;
+                  effects[i] = seqPtr->Waveform[i].effect;
             } else {
                   break;
             }
@@ -277,7 +277,7 @@ static void set_waveform(struct waveform_sequencer *seqPtr) {
             write_transfer(WAV_FRM_SEQ1_REG, 0);
       } else {
             for (i=0; i<len; i++) {
-                  write_transfer((WAV_FRM_SEQ1_REG+i), effects[i])
+                  write_transfer((WAV_FRM_SEQ1_REG+i), effects[i]);
             }
       }
 
@@ -307,7 +307,7 @@ void waveform_sequencer(uint8_t effect_id, uint8_t main_loop_count) {
       }
 
       // Clear WAIT to indicate SEQ holds a wavefrom identifier
-      buf = read_transfer(WAV_FRM_SEQ1_REG) & ~(WAITn_MASK);
+      uint8_t buf = read_transfer(WAV_FRM_SEQ1_REG) & ~(WAITn_MASK);
       write_transfer(WAV_FRM_SEQ1_REG, buf);
 
       // set_waveform(effect_id);
