@@ -136,6 +136,7 @@ static void autocalibrate(struct motor* motorPtr) {
       // Configure DRIVE_TIME
       buf = (read_transfer(DRIVE_TIME_REG) & ~(DRIVE_TIME_MASK)) + (motorPtr->driveTime & DRIVE_TIME_MASK);
       write_transfer(DRIVE_TIME_REG, buf);
+      // All else is default
 
       // Start auto-calibration process
       set_go();
@@ -208,9 +209,7 @@ void drv2625_init(struct motor* motorPtr, uint8_t isOpenLoop) {
       set_mode(MODE_RTP);
       // Autocalibrate for each power-up
       autocalibrate(motorPtr);
-
-      // Set Actuator Type Parameters
-
+      
       // Select library and configure for open/close loop
       if (isOpenLoop) {
             data = read_transfer(LIB_SEL_REG) | (LIB_SEL_MASK);
