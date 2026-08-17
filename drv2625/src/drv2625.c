@@ -68,12 +68,27 @@ static uint8_t read_transfer(uint8_t reg_addr) {
 }
 
 /* DRV2625 HELPERS */
+
+// Blocking trigger: fires GO and waits for the chip to clear it.
+// Only correct for processes that are guaranteed to finish on their own
+// (diagnostics, auto-calibration). Do NOT use this for waveform-sequencer
+// playback with an infinite WAV_SEQ_MAIN_LOOP (7) -- GO will never clear
+// on its own and this will hang forever.
 static void set_go() {
       uint8_t buf = read_transfer(GO_REG) | GO_MASK;
       write_transfer(GO_REG, buf);
       // GO automatically clears when process is complete
       // TODO Change to polling, add timeout
       while (read_transfer(GO_REG) & GO_MASK);
+}
+
+// Non-blocking trigger: fires GO and returns immediately. Use this for
+// waveform-sequencer playback, whose duration (including "infinite" loops
+// via WAV_SEQ_MAIN_LOOP = 7) is caller-defined rather than fixed.
+// To stop playback started this way, write 0 back to GO_REG (see stop_effect()).
+static void trigger_go() {
+      uint8_t buf = read_transfer(GO_REG) | GO_MASK;
+      write_transfer(GO_REG, buf);
 }
 
 static void set_mode(uint8_t mode) {
@@ -84,18 +99,28 @@ static void set_mode(uint8_t mode) {
 }
 
 static uint8_t get_diag_result() {
-      uint8_t result = read_transfer(DIAG_RESULT_REG) & DIAG_RESULT_MASK;
+      uint8_t status = read_transfer(DIAG_RESULT_REG);
+      uint8_t result = status & DIAG_RESULT_MASK;
       if (result) {
-            // DIAG_RESULT is high if a fault is detected
-            printk("Process failed\n", result);
+            // DIAG_RESULT is high if a fault is detected. Decode the rest
+            // of the status byte too -- UVLO/OVER_TEMP/OC_DETECT pinpoint
+            // *why* the process aborted (e.g. a supply sag vs. a genuinely
+            // bad/absent actuator), which DIAG_RESULT alone can't tell you.
+            printk("Process failed (status=0x%02x): UVLO=%d OVER_TEMP=%d OC_DETECT=%d PROCESS_DONE=%d\n",
+                   status,
+                   (status & UVLO_MASK) ? 1 : 0,
+                   (status & OVER_TEMP_MASK) ? 1 : 0,
+                   (status & OC_DETECT_MASK) ? 1 : 0,
+                   (status & PROCESS_DONE_MASK) ? 1 : 0);
       }
       return result;
 }
 
+
 static uint8_t run_diagnostics() {
       set_mode(MODE_DIAG);
       printk("MODE_REG after set: %02x\n", read_transfer(MODE_REG));
-      set_go();  // actually trigger the routine this time
+      set_go();  // bounded process -- OK to block here
 
       uint8_t diagZ = read_transfer(DIAG_Z_RESULT_REG);
       printk("DIAG_Z_RESULT: %02x\n", diagZ);
@@ -142,7 +167,7 @@ static void autocalibrate(struct motor* motorPtr) {
       set_motor_params(motorPtr);
       // Set auto-calibration routine (MODE[1:0] = 0x03)
       set_mode(MODE_CALIBRATION);
-      // Start auto-calibration process
+      // Start auto-calibration process (bounded process -- OK to block)
       set_go();
 
       // Check auto-calibration results:
@@ -214,20 +239,16 @@ void drv2625_init(struct motor* motorPtr, uint8_t isOpenLoop) {
       // Autocalibrate for each power-up
       autocalibrate(motorPtr);
 
-      // Exit autocalibration mode
-      // data = read_transfer(MODE_REG);
-      // write_transfer(MODE_REG, (data & ~(MODE_MASK)));
-
       // Select library and configure for open/close loop
-      if (isOpenLoop) {
-            data = read_transfer(LIB_SEL_REG) | (LIB_SEL_MASK);
-            write_transfer(LIB_SEL_REG, data);
-            open_loop_config(motorPtr->olLRAPeriod);
-      } else {
-            data = read_transfer(LIB_SEL_REG) & ~(LIB_SEL_MASK);
-            write_transfer(LIB_SEL_REG, data);
-            closed_loop_config();
-      }
+      // if (isOpenLoop) {
+      //       data = read_transfer(LIB_SEL_REG) | (LIB_SEL_MASK);
+      //       write_transfer(LIB_SEL_REG, data);
+      //       open_loop_config(motorPtr->olLRAPeriod);
+      // } else {
+      //       data = read_transfer(LIB_SEL_REG) & ~(LIB_SEL_MASK);
+      //       write_transfer(LIB_SEL_REG, data);
+      //       closed_loop_config();
+      // }
 }
 
 // Turn off DRV_VDD
@@ -241,59 +262,62 @@ void power_down() {
 
 static void play_effect() {
       set_mode(MODE_WAVEFORM_SEQ);
-      set_go();
+      // Non-blocking: playback duration (including infinite loops via
+      // WAV_SEQ_MAIN_LOOP = 7) is caller-defined, so don't wait for GO here.
+      trigger_go();
       printk("Effect start\n");
 }
 
-// static void config_waveform(struct wave_setting * settingPtr) {
-//       int value = 0;
-//       write_transfer(WAV_SEQ_MAIN_LOOP_REG, settingPtr->loop & 0x07);
-//       value |= ((settingPtr->interval & 0x01) << 0x05);
-//       value |= (settingPtr->scale & 0x03);
-//       // TODO write values into control2 
-// };
-
-static void set_waveform(struct waveform_sequencer *seqPtr) {
-      int i = 0;
-      unsigned char loop[2] = {0};
-      unsigned char effects[SEQ_SIZE] = {0};
-      unsigned char len = 0;
-
-      for (i = 0; i < SEQ_SIZE; i++) {
-            len++;
-            if (seqPtr->Waveform[i].effect != 0) {
-                  if (i < 4) {
-                        loop[0] |= (seqPtr->Waveform[i].loop << (2*i));
-                  } else {
-                        loop[1] |= (seqPtr->Waveform[i].loop << (2*(i-4)));
-                  }
-                  effects[i] = seqPtr->Waveform[i].effect;
-            } else {
-                  break;
-            }
-      }
-
-      if (len == 1) {
-            write_transfer(WAV_FRM_SEQ1_REG, 0);
-      } else {
-            for (i=0; i<len; i++) {
-                  write_transfer((WAV_FRM_SEQ1_REG+i), effects[i]);
-            }
-      }
-
-      if (len > 1) {
-            write_transfer(WAV1_SEQ_LOOP_REG, loop[0]);
-            if (!((len-1) <= 4)) {
-                  write_transfer(WAV5_SEQ_LOOP_REG, loop[1]);
-            }
-      }
+// Stops any waveform-sequencer playback started by play_effect(), including
+// an infinite-loop playback. Safe to call even if nothing is playing.
+void stop_effect() {
+      uint8_t buf = read_transfer(GO_REG) & ~(GO_MASK);
+      write_transfer(GO_REG, buf);
+      printk("Effect stop\n");
 }
+
+// static void set_waveform(struct waveform_sequencer *seqPtr) {
+//       int i = 0;
+//       unsigned char loop[2] = {0};
+//       unsigned char effects[SEQ_SIZE] = {0};
+//       unsigned char len = 0;
+
+//       for (i = 0; i < SEQ_SIZE; i++) {
+//             len++;
+//             if (seqPtr->Waveform[i].effect != 0) {
+//                   if (i < 4) {
+//                         loop[0] |= (seqPtr->Waveform[i].loop << (2*i));
+//                   } else {
+//                         loop[1] |= (seqPtr->Waveform[i].loop << (2*(i-4)));
+//                   }
+//                   effects[i] = seqPtr->Waveform[i].effect;
+//             } else {
+//                   break;
+//             }
+//       }
+
+//       if (len == 1) {
+//             write_transfer(WAV_FRM_SEQ1_REG, 0);
+//       } else {
+//             for (i=0; i<len; i++) {
+//                   write_transfer((WAV_FRM_SEQ1_REG+i), effects[i]);
+//             }
+//       }
+
+//       if (len > 1) {
+//             write_transfer(WAV1_SEQ_LOOP_REG, loop[0]);
+//             if (!((len-1) <= 4)) {
+//                   write_transfer(WAV5_SEQ_LOOP_REG, loop[1]);
+//             }
+//       }
+// }
 
 /**
  * @brief Assumes using an effect from the library
  * 
  * @param effect_id See 9.1.1 Waveform Library Effects List
- * @param main_loop_count See Table 8-27
+ * @param main_loop_count See Table 8-27. 0-6 = play sequence 1-7 times;
+ *                         7 = loop the sequence forever.
  */
 void waveform_sequencer(uint8_t effect_id, uint8_t main_loop_count) {
       // Make sure params are valid:

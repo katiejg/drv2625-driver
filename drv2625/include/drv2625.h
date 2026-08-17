@@ -26,6 +26,7 @@
 #define A_CAL_COMP_REG 0x21
 #define A_CAL_BEMF_REG 0x22
 #define BEMF_GAIN_REG 0x23
+#define AUTO_CAL_TIME_REG 0x2a
 #define CURRENT_K_REG 0x30
 
 // WAV_FRM_SEQ Regs
@@ -61,6 +62,10 @@
 /* REGISTER MASKS */
 #define CHIPID_MASK 0xf0
 #define DIAG_RESULT_MASK 0x80
+#define PROCESS_DONE_MASK 0x08
+#define UVLO_MASK 0x04
+#define OVER_TEMP_MASK 0x02
+#define OC_DETECT_MASK 0x01
 #define MODE_MASK 0x03
 #define TRIG_PIN_FUNC_MASK 0x0c
 #define AUTO_BRK_OL_MASK 0x10
@@ -75,6 +80,13 @@
 #define DRIVE_TIME_MASK 0x1f
 #define OL_LRA_PERIOD_MASK_UPPER 0x03
 #define BEMF_GAIN_MASK 0x03
+#define AUTO_CAL_TIME_MASK 0x03
+
+/* AUTO_CAL_TIME[1:0] selections (datasheet Table 7-2) */
+#define AUTO_CAL_TIME_250MS 0x00
+#define AUTO_CAL_TIME_500MS 0x01
+#define AUTO_CAL_TIME_1S 0x02       /* power-on default */
+#define AUTO_CAL_TIME_TRIGGERED 0x03
 
 
 /* CONFIG DEFINES */
@@ -118,6 +130,7 @@ struct wave_setting {
 /* PUBLIC FUNCTIONS */
 void drv2625_init(struct motor* motorPtr, uint8_t isOpenLoop);
 void waveform_sequencer(uint8_t effect_id, uint8_t main_loop_count);
+void stop_effect();
 void power_down();
 
 #endif // DRV2625_H
