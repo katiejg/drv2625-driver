@@ -68,13 +68,7 @@ static uint8_t read_transfer(uint8_t reg_addr) {
 }
 
 /* DRV2625 HELPERS */
-
-// Blocking trigger: fires GO and waits for the chip to clear it.
-// Only correct for processes that are guaranteed to finish on their own
-// (diagnostics, auto-calibration). Do NOT use this for waveform-sequencer
-// playback with an infinite WAV_SEQ_MAIN_LOOP (7) -- GO will never clear
-// on its own and this will hang forever.
-static void set_go() {
+static void set_go() { // blocking
       uint8_t buf = read_transfer(GO_REG) | GO_MASK;
       write_transfer(GO_REG, buf);
       // GO automatically clears when process is complete
@@ -82,11 +76,7 @@ static void set_go() {
       while (read_transfer(GO_REG) & GO_MASK);
 }
 
-// Non-blocking trigger: fires GO and returns immediately. Use this for
-// waveform-sequencer playback, whose duration (including "infinite" loops
-// via WAV_SEQ_MAIN_LOOP = 7) is caller-defined rather than fixed.
-// To stop playback started this way, write 0 back to GO_REG (see stop_effect()).
-static void trigger_go() {
+static void trigger_go() { // nonblocking
       uint8_t buf = read_transfer(GO_REG) | GO_MASK;
       write_transfer(GO_REG, buf);
 }
@@ -102,10 +92,6 @@ static uint8_t get_diag_result() {
       uint8_t status = read_transfer(DIAG_RESULT_REG);
       uint8_t result = status & DIAG_RESULT_MASK;
       if (result) {
-            // DIAG_RESULT is high if a fault is detected. Decode the rest
-            // of the status byte too -- UVLO/OVER_TEMP/OC_DETECT pinpoint
-            // *why* the process aborted (e.g. a supply sag vs. a genuinely
-            // bad/absent actuator), which DIAG_RESULT alone can't tell you.
             printk("Process failed (status=0x%02x): UVLO=%d OVER_TEMP=%d OC_DETECT=%d PROCESS_DONE=%d\n",
                    status,
                    (status & UVLO_MASK) ? 1 : 0,
@@ -116,11 +102,10 @@ static uint8_t get_diag_result() {
       return result;
 }
 
-
 static uint8_t run_diagnostics() {
       set_mode(MODE_DIAG);
       printk("MODE_REG after set: %02x\n", read_transfer(MODE_REG));
-      set_go();  // bounded process -- OK to block here
+      set_go();  // actually trigger the routine this time
 
       uint8_t diagZ = read_transfer(DIAG_Z_RESULT_REG);
       printk("DIAG_Z_RESULT: %02x\n", diagZ);
@@ -151,7 +136,6 @@ static void set_motor_params(struct motor* motorPtr) {
             buf = read_transfer(LRA_ERM_REG) & ~(LRA_ERM_MASK);
       }
 
-
       write_transfer(LRA_ERM_REG, buf);
       // Configure RATED_VOLTAGE
       write_transfer(RATED_VOLTAGE_REG, motorPtr->ratedVoltage);
@@ -165,9 +149,11 @@ static void set_motor_params(struct motor* motorPtr) {
 static void autocalibrate(struct motor* motorPtr) {
       // Pass relevant parameters to auto-calibration engine:
       set_motor_params(motorPtr);
+
       // Set auto-calibration routine (MODE[1:0] = 0x03)
       set_mode(MODE_CALIBRATION);
-      // Start auto-calibration process (bounded process -- OK to block)
+      
+      // Start auto-calibration process
       set_go();
 
       // Check auto-calibration results:
@@ -220,6 +206,10 @@ static void open_loop_config(uint16_t olLRAPeriod) {
 void drv2625_init(struct motor* motorPtr, uint8_t isOpenLoop) {
       // Turn on GPIOs
       switch_init();
+
+      // Power cycle
+      switch_set(0);
+      k_msleep(50);
       switch_set(1);
 
       // Required delay for DRV2625 to power on:
@@ -232,23 +222,27 @@ void drv2625_init(struct motor* motorPtr, uint8_t isOpenLoop) {
       data = read_transfer(TRIG_PIN_FUNC_REG) & ~(TRIG_PIN_FUNC_MASK);
       write_transfer(TRIG_PIN_FUNC_REG, data);
 
+      set_motor_params(motorPtr);
       run_diagnostics();
 
       // Remove device from standby by writing to 0x00 to MODE:
       set_mode(MODE_RTP);
       // Autocalibrate for each power-up
       autocalibrate(motorPtr);
-
+      
       // Select library and configure for open/close loop
-      // if (isOpenLoop) {
-      //       data = read_transfer(LIB_SEL_REG) | (LIB_SEL_MASK);
-      //       write_transfer(LIB_SEL_REG, data);
-      //       open_loop_config(motorPtr->olLRAPeriod);
-      // } else {
-      //       data = read_transfer(LIB_SEL_REG) & ~(LIB_SEL_MASK);
-      //       write_transfer(LIB_SEL_REG, data);
-      //       closed_loop_config();
-      // }
+      // Lib A = LRA, Closed Loop
+      // Lib B = ERM, Open Loop
+      // No library support for LRA Open Loop
+      if (isOpenLoop) {
+            data = read_transfer(LIB_SEL_REG) | (LIB_SEL_MASK);
+            write_transfer(LIB_SEL_REG, data);
+            open_loop_config(motorPtr->olLRAPeriod);
+      } else {
+            data = read_transfer(LIB_SEL_REG) & ~(LIB_SEL_MASK);
+            write_transfer(LIB_SEL_REG, data);
+            closed_loop_config();
+      }
 }
 
 // Turn off DRV_VDD
