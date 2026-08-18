@@ -110,24 +110,21 @@ static uint8_t run_diagnostics() {
 }
 
 /* DRV2625 ROUTINES */
-static void autocalibrate(struct motor* motorPtr) {
-      // Set auto-calibration routine (MODE[1:0] = 0x03)
-      set_mode(MODE_CALIBRATION);
-      
+static void set_motor_params(struct motor* motorPtr) {
       // Print motor parameters (debug)
       printk("Rated Voltage: %02i\n", motorPtr->ratedVoltage);
       printk("OD Clamp: %02i\n", motorPtr->odClamp);
       printk("Drive Time: %02i\n", motorPtr->driveTime);
       printk("OL LRA Period: %02i\n", motorPtr->olLRAPeriod);
-      printk("is LRA?: %02i\n", motorPtr->isLRA);
-      
-      // Pass relevant parameters to auto-calibration engine:
+      printk("LRA?: %02i\n", motorPtr->isLRA);
+
       uint8_t buf;
       if (motorPtr->isLRA) {
             buf = read_transfer(LRA_ERM_REG) | LRA_ERM_MASK;
       } else {
             buf = read_transfer(LRA_ERM_REG) & ~(LRA_ERM_MASK);
       }
+
       write_transfer(LRA_ERM_REG, buf);
       // Configure RATED_VOLTAGE
       write_transfer(RATED_VOLTAGE_REG, motorPtr->ratedVoltage);
@@ -136,8 +133,15 @@ static void autocalibrate(struct motor* motorPtr) {
       // Configure DRIVE_TIME
       buf = (read_transfer(DRIVE_TIME_REG) & ~(DRIVE_TIME_MASK)) + (motorPtr->driveTime & DRIVE_TIME_MASK);
       write_transfer(DRIVE_TIME_REG, buf);
-      // All else is default
+}
 
+static void autocalibrate(struct motor* motorPtr) {
+      // Pass relevant parameters to auto-calibration engine:
+      set_motor_params(motorPtr);
+
+      // Set auto-calibration routine (MODE[1:0] = 0x03)
+      set_mode(MODE_CALIBRATION);
+      
       // Start auto-calibration process
       set_go();
 
@@ -191,6 +195,10 @@ static void open_loop_config(uint16_t olLRAPeriod) {
 void drv2625_init(struct motor* motorPtr, uint8_t isOpenLoop) {
       // Turn on GPIOs
       switch_init();
+
+      // Power cycle
+      switch_set(0);
+      k_msleep(50);
       switch_set(1);
 
       // Required delay for DRV2625 to power on:
@@ -203,6 +211,7 @@ void drv2625_init(struct motor* motorPtr, uint8_t isOpenLoop) {
       data = read_transfer(TRIG_PIN_FUNC_REG) & ~(TRIG_PIN_FUNC_MASK);
       write_transfer(TRIG_PIN_FUNC_REG, data);
 
+      set_motor_params(motorPtr);
       run_diagnostics();
 
       // Remove device from standby by writing to 0x00 to MODE:
@@ -211,6 +220,9 @@ void drv2625_init(struct motor* motorPtr, uint8_t isOpenLoop) {
       autocalibrate(motorPtr);
       
       // Select library and configure for open/close loop
+      // Lib A = LRA, Closed Loop
+      // Lib B = ERM, Open Loop
+      // No library support for LRA Open Loop
       if (isOpenLoop) {
             data = read_transfer(LIB_SEL_REG) | (LIB_SEL_MASK);
             write_transfer(LIB_SEL_REG, data);
