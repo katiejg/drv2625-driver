@@ -129,6 +129,7 @@ struct wave_setting {
 
 /* PUBLIC FUNCTIONS */
 void drv2625_init(struct motor* motorPtr, uint8_t isOpenLoop);
+void rtp_drive(uint8_t amplitude);
 void waveform_sequencer(uint8_t effect_id, uint8_t main_loop_count);
 void stop_effect();
 void power_down();

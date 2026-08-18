@@ -18,7 +18,7 @@ static void switch_init() {
             printk("The switch pin GPIO port is not ready!\n\r");
             return;
       }
-      uint8_t err = gpio_pin_configure_dt(&drv_switch, GPIO_OUTPUT_ACTIVE);
+      uint8_t err = gpio_pin_configure_dt(&drv_switch, GPIO_OUTPUT_INACTIVE);
       if (err != 0) {
             printk("Configuring GPIO pin to output failed.\n");
             return;
@@ -88,6 +88,16 @@ static void set_mode(uint8_t mode) {
       printk("Set mode (%x)\n", mode);
 }
 
+// The status register latches faults and clears on read. Powering the device up
+// ramps VDD through the undervoltage threshold, which latches UVLO before any
+// process has run. Read once and discard so the first process to check status
+// does not inherit a stale fault that has nothing to do with it.
+static void clear_status() {
+      uint8_t status = read_transfer(DIAG_RESULT_REG);
+      printk("Power-on status (discarded): reg01=%02x reg00=%02x\n",
+             status, read_transfer(CHIPID_REG));
+}
+
 static uint8_t get_diag_result() {
       uint8_t status = read_transfer(DIAG_RESULT_REG);
       uint8_t result = status & DIAG_RESULT_MASK;
@@ -146,7 +156,7 @@ static void set_motor_params(struct motor* motorPtr) {
       write_transfer(DRIVE_TIME_REG, buf);
 }
 
-static void autocalibrate(struct motor* motorPtr) {
+static uint8_t autocalibrate(struct motor* motorPtr) {
       // Pass relevant parameters to auto-calibration engine:
       set_motor_params(motorPtr);
 
@@ -165,10 +175,11 @@ static void autocalibrate(struct motor* motorPtr) {
       uint8_t diagnostic = get_diag_result();
       if (diagnostic) {
             printk("Auto-calibration failed\n");
-            return;
+            return diagnostic;
       }
 
       printk("Auto-calibration complete\n");
+      return 0;
 }
 
 // Configuration for Closed Loop Architecture
@@ -218,6 +229,8 @@ void drv2625_init(struct motor* motorPtr, uint8_t isOpenLoop) {
       uint8_t data = read_transfer(CHIPID_REG);
       printk("DRV2625 Chip ID (should be 1): %x \n", ((data & CHIPID_MASK) >> 4));
 
+      clear_status();
+
       // Allow GO to trigger starts
       data = read_transfer(TRIG_PIN_FUNC_REG) & ~(TRIG_PIN_FUNC_MASK);
       write_transfer(TRIG_PIN_FUNC_REG, data);
@@ -227,9 +240,10 @@ void drv2625_init(struct motor* motorPtr, uint8_t isOpenLoop) {
 
       // Remove device from standby by writing to 0x00 to MODE:
       set_mode(MODE_RTP);
+      
       // Autocalibrate for each power-up
       autocalibrate(motorPtr);
-      
+
       // Select library and configure for open/close loop
       // Lib A = LRA, Closed Loop
       // Lib B = ERM, Open Loop
@@ -252,8 +266,23 @@ void power_down() {
 }
 
 /* PLAYBACK MODES */
-// TODO: Implement RTP Mode
+// For both RTP and WAVEFORM_SEQ
+void stop_effect() {
+      uint8_t buf = read_transfer(GO_REG) & ~(GO_MASK);
+      write_transfer(GO_REG, buf);
+      printk("Effect stop\n");
+}
 
+// RTP Mode: Write Waveforms to MEM, RTP Params, Trigger
+void rtp_drive(uint8_t amplitude) {
+      // Write desired drive amplitude:
+      write_transfer(RTP_INPUT_REG, amplitude); // signed 8b
+      set_mode(MODE_RTP);
+      trigger_go();
+      // printk("RTP amplitude = %02d\n", amplitude);
+}
+
+// WAVEFORM SEQUENCER
 static void play_effect() {
       set_mode(MODE_WAVEFORM_SEQ);
       // Non-blocking: playback duration (including infinite loops via
@@ -261,50 +290,6 @@ static void play_effect() {
       trigger_go();
       printk("Effect start\n");
 }
-
-// Stops any waveform-sequencer playback started by play_effect(), including
-// an infinite-loop playback. Safe to call even if nothing is playing.
-void stop_effect() {
-      uint8_t buf = read_transfer(GO_REG) & ~(GO_MASK);
-      write_transfer(GO_REG, buf);
-      printk("Effect stop\n");
-}
-
-// static void set_waveform(struct waveform_sequencer *seqPtr) {
-//       int i = 0;
-//       unsigned char loop[2] = {0};
-//       unsigned char effects[SEQ_SIZE] = {0};
-//       unsigned char len = 0;
-
-//       for (i = 0; i < SEQ_SIZE; i++) {
-//             len++;
-//             if (seqPtr->Waveform[i].effect != 0) {
-//                   if (i < 4) {
-//                         loop[0] |= (seqPtr->Waveform[i].loop << (2*i));
-//                   } else {
-//                         loop[1] |= (seqPtr->Waveform[i].loop << (2*(i-4)));
-//                   }
-//                   effects[i] = seqPtr->Waveform[i].effect;
-//             } else {
-//                   break;
-//             }
-//       }
-
-//       if (len == 1) {
-//             write_transfer(WAV_FRM_SEQ1_REG, 0);
-//       } else {
-//             for (i=0; i<len; i++) {
-//                   write_transfer((WAV_FRM_SEQ1_REG+i), effects[i]);
-//             }
-//       }
-
-//       if (len > 1) {
-//             write_transfer(WAV1_SEQ_LOOP_REG, loop[0]);
-//             if (!((len-1) <= 4)) {
-//                   write_transfer(WAV5_SEQ_LOOP_REG, loop[1]);
-//             }
-//       }
-// }
 
 /**
  * @brief Assumes using an effect from the library
